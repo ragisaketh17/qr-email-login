@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#3b0021">
+  <title>Mart Fest</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="hero">
+      <div class="topbar" id="topbar" hidden>
+        <span class="who" id="who"></span>
+        <button class="signout" id="logout" type="button">Sign out</button>
+      </div>
+
+      <div class="banner">
+        <span class="mascot mascot-left" aria-hidden="true">🍟</span>
+        <div class="banner-title">
+          <h1 class="fest">MART FEST</h1>
+          <p class="cta">Scan · Visit · Win</p>
+        </div>
+        <span class="mascot mascot-right" aria-hidden="true">🍔</span>
+      </div>
+
+      <div class="strip" id="strip" hidden></div>
+    </header>
+
+    <main class="sheet">
+      <!-- Sign-in view -->
+      <section id="login-view" hidden>
+        <h2>Sign in to collect rewards</h2>
+        <p class="sub">Every time you scan our QR code, your visit is counted and new offers unlock.</p>
+
+        <form id="login-form" novalidate>
+          <label for="email">Email address</label>
+          <input id="email" name="email" type="email" inputmode="email"
+                 autocomplete="email" placeholder="name@example.com" required>
+          <p id="error" class="error" role="alert" hidden></p>
+          <button id="submit" class="primary" type="submit">Sign in</button>
+        </form>
+      </section>
+
+      <!-- Rewards view -->
+      <section id="rewards-view" hidden>
+        <div class="rewards-head">
+          <h2>Visit Rewards</h2>
+          <span class="count"><strong id="visit-count">0</strong> <span id="visit-word">visits</span></span>
+        </div>
+
+        <div class="tracker" id="tracker"></div>
+
+        <div class="detail" id="detail">
+          <div class="detail-top">
+            <span class="detail-headline" id="detail-headline"></span>
+            <span class="chip" id="detail-chip"></span>
+          </div>
+          <div class="detail-row">
+            <p class="detail-text" id="detail-text"></p>
+            <button type="button" class="view-all" id="view-all">View all ›</button>
+          </div>
+          <button type="button" class="claim-btn" id="claim-btn" hidden>Claim reward</button>
+        </div>
+
+        <p class="next" id="next" hidden></p>
+      </section>
+    </main>
+  </div>
+
+  <!-- All rewards page (opens from "View all") -->
+  <div class="rewards-page" id="rewards-page" hidden>
+    <div class="page">
+      <header class="page-hero">
+        <button type="button" class="back" id="page-back" aria-label="Back">←</button>
+        <h2 id="page-title">Visit more to win rewards!</h2>
+        <p id="page-sub"></p>
+      </header>
+
+      <div class="page-sheet">
+        <ol class="timeline" id="timeline"></ol>
+      </div>
+
+      <div class="page-footer">
+        <button type="button" class="primary" id="page-go-back">Go back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Visit completed pop-up -->
+  <div class="overlay popup-overlay" id="visit-popup" hidden>
+    <div class="popup" role="dialog" aria-modal="true" aria-labelledby="popup-title">
+      <div class="popup-burst" aria-hidden="true">🎉</div>
+      <h2 id="popup-title"></h2>
+      <p class="popup-sub" id="popup-sub"></p>
+
+      <div class="popup-reward" id="popup-reward" hidden>
+        <span class="popup-reward-icon" id="popup-reward-icon" aria-hidden="true"></span>
+        <div>
+          <strong id="popup-reward-title"></strong>
+          <p id="popup-reward-text"></p>
+        </div>
+      </div>
+
+      <button type="button" class="claim-btn" id="popup-view" hidden>View my reward</button>
+      <button type="button" class="popup-close" id="popup-close">Continue</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden>Visit counted ✓</div>
+
+  <script src="script.js"></script>
+</body>
+</html>

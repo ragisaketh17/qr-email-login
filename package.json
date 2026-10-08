@@ -1,0 +1,20 @@
+{
+  "name": "qr-email-login",
+  "version": "1.0.0",
+  "description": "QR visit and rewards web app with email sign-in and SQLite",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "qr": "node qr.js",
+    "build": "npm --prefix client install --include=dev && npm --prefix client run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "qrcode": "latest",
+    "sqlite": "latest",
+    "sqlite3": "latest"
+  }
+}
