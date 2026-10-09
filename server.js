@@ -30,8 +30,17 @@ const os = require("os");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
 
-const { open } = require("sqlite");
-const sqlite3 = require("sqlite3");
+const isVercel = Boolean(process.env.VERCEL);
+
+// The local SQLite packages are only loaded on your own computer.
+// On Vercel (or whenever Turso is used) they are never loaded, so they cannot crash the server.
+let open = null;
+let sqlite3 = null;
+
+if (!isVercel && !process.env.TURSO_DATABASE_URL) {
+  ({ open } = require("sqlite"));
+  sqlite3 = require("sqlite3");
+}
 
 const app = express();
 
@@ -150,10 +159,14 @@ const getScanUrl = () => `${getBaseUrl()}/scan`;
 
 let db = null;
 
+// Connects to Turso (the online database).
+// It gives back the same methods as the sqlite package (run, get, all, exec),
+// so none of the routes below have to change.
 const createLibsqlDatabase = () => {
   const { createClient } = require("@libsql/client");
   const client = createClient({
-    url: process.env.TURSO_DATABASE_URL,
+    // plain https works best on Vercel
+    url: process.env.TURSO_DATABASE_URL.replace(/^libsql:\/\//, "https://"),
     authToken: process.env.TURSO_AUTH_TOKEN,
   });
 
@@ -185,8 +198,10 @@ const initializeDatabase = async () => {
   }
 
   if (process.env.TURSO_DATABASE_URL) {
+    // Online database (use this on Vercel)
     db = createLibsqlDatabase();
   } else {
+    // Local file users.db (use this on your computer)
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     db = await open({
       filename: dbPath,
@@ -219,6 +234,7 @@ const initializeDatabase = async () => {
 
 const databaseReady = initializeDatabase();
 app.locals.databaseReady = databaseReady;
+databaseReady.catch(() => { }); // stops a startup error from crashing Node; the middleware below reports it
 
 // --- Helpers ---
 const hashToken = (token) =>
@@ -288,11 +304,23 @@ app.use("/api", (request, response, next) => {
   next();
 });
 
-// --- Test and QR routes ---
+// --- Connection test (answers even if the database is down) ---
 app.get("/health", (request, response) => {
   response.type("text").send("OK");
 });
 
+// Every request below waits until the database is ready (the first visit on Vercel needs this)
+app.use(async (request, response, next) => {
+  try {
+    await databaseReady;
+    next();
+  } catch (e) {
+    console.log(`DB Error: ${e.message}`);
+    response.status(500).json({ error: "Database not available. Check the Turso settings." });
+  }
+});
+
+// --- QR routes ---
 app.get("/qr.png", async (request, response) => {
   try {
     const png = await QRCode.toBuffer(getScanUrl(), { width: 600, margin: 2 });
@@ -429,8 +457,11 @@ app.post("/api/logout", async (request, response) => {
   response.json({ ok: true });
 });
 
+// The owner's dashboard lives in its own file (dashboard.js)
 require("./dashboard")(app, { getDb: () => db, getCookie, OFFERS, toIso });
 
+// --- Running on your computer: npm start / start.ps1 ---
+// On Vercel nothing starts here. The app is exported on the last line instead.
 if (require.main === module) {
   databaseReady
     .then(() => {
@@ -468,7 +499,7 @@ if (require.main === module) {
           console.log(`   On this computer: http://localhost:${PORT}/dashboard`);
           console.log(`   Online link:      ${getBaseUrl()}/dashboard`);
         } else {
-          console.log("3) Admin Dashboard: http://localhost:${PORT}/dashboard");
+          console.log(`3) Admin Dashboard: http://localhost:${PORT}/dashboard`);
         }
       });
 
@@ -484,5 +515,3 @@ if (require.main === module) {
 }
 
 module.exports = app;
-
-
