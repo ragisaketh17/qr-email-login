@@ -197,8 +197,8 @@ const initializeDatabase = async () => {
   }
 
   if (process.env.TURSO_DATABASE_URL) {
-    // Online database (use this on Vercel)
-    db = createLibsqlDatabase();
+  // Online database (use this on Vercel)
+  db = createLibsqlDatabase();
   } else {
     // Local file users.db (use this on your computer)
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
