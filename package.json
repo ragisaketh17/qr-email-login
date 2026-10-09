@@ -15,7 +15,6 @@
     "@libsql/client": "^0.18.0",
     "express": "^4.19.2",
     "qrcode": "latest",
-    "sqlite": "latest",
-    "sqlite3": "latest"
+    "sqlite": "latest"
   }
 }
