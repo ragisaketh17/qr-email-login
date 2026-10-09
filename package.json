@@ -4,7 +4,8 @@
   "description": "QR visit and rewards web app with email sign-in and SQLite",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node start.js",
+    "start:server": "node server.js",
     "qr": "node qr.js"
   },
   "engines": {

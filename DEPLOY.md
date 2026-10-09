@@ -26,6 +26,21 @@ the Turso URL or auth token is missing; they never fall back to temporary local
 SQLite storage. The Turso database starts empty; customer records in the
 existing local `users.db` are not uploaded automatically.
 
+# Run locally with mobile data
+
+Install Cloudflare Tunnel (`cloudflared`) once. On Windows, put
+`cloudflared.exe` in the project root (it is intentionally ignored by Git), or
+set `CLOUDFLARED_PATH` to its installed location. Then run:
+
+```powershell
+npm start
+```
+
+The command starts the tunnel, prints a temporary public URL, and uses it for
+the app and QR code. Keep the command running while customers use the link; the
+temporary URL stops working when the command exits. `npm start` skips creating
+a tunnel when `PUBLIC_URL` is already set or when running on Vercel or Render.
+
 # Deploy to Render
 
 This app uses SQLite. The Render Blueprint provisions a persistent disk for the
