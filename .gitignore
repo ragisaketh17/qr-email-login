@@ -9,3 +9,5 @@ cloudflared.exe
 tunnel.log
 tunnel.log.out
 .env
+.env.*
+.vercel

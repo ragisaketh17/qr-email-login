@@ -35,9 +35,7 @@ const sqlite3 = require("sqlite3");
 
 const app = express();
 
-// On a host with a persistent disk, set DB_PATH (e.g. /data/users.db) so data survives restarts.
 const dbPath = process.env.DB_PATH || path.join(__dirname, "users.db");
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const PORT = process.env.PORT || 3000;
 
@@ -131,7 +129,10 @@ const normalizeUrl = (value) => {
 };
 
 const getPublicUrl = () =>
-  process.env.PUBLIC_URL?.trim() || process.env.RENDER_EXTERNAL_URL?.trim() || "";
+  process.env.PUBLIC_URL?.trim() ||
+  process.env.RENDER_EXTERNAL_URL?.trim() ||
+  process.env.VERCEL_URL?.trim() ||
+  "";
 
 // If PUBLIC_URL is set (tunnel or deployed site), that wins. Works on mobile data.
 // Otherwise we use the computer's Wi-Fi address, which only works on the same Wi-Fi.
@@ -149,86 +150,75 @@ const getScanUrl = () => `${getBaseUrl()}/scan`;
 
 let db = null;
 
-const initializeDBAndServer = async () => {
-  try {
+const createLibsqlDatabase = () => {
+  const { createClient } = require("@libsql/client");
+  const client = createClient({
+    url: process.env.TURSO_DATABASE_URL,
+    authToken: process.env.TURSO_AUTH_TOKEN,
+  });
+
+  return {
+    async run(sql, args = []) {
+      const result = await client.execute({ sql, args });
+      return {
+        changes: Number(result.rowsAffected),
+        lastID: Number(result.lastInsertRowid),
+      };
+    },
+    async get(sql, args = []) {
+      const result = await client.execute({ sql, args });
+      return result.rows[0];
+    },
+    async all(sql, args = []) {
+      const result = await client.execute({ sql, args });
+      return result.rows;
+    },
+    exec(sql) {
+      return client.executeMultiple(sql);
+    },
+  };
+};
+
+const initializeDatabase = async () => {
+  if (process.env.VERCEL && (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN)) {
+    throw new Error("TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are required on Vercel.");
+  }
+
+  if (process.env.TURSO_DATABASE_URL) {
+    db = createLibsqlDatabase();
+  } else {
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     db = await open({
       filename: dbPath,
       driver: sqlite3.Database,
     });
-
     await db.run(`PRAGMA foreign_keys = ON;`);
-
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        email         TEXT NOT NULL UNIQUE,
-        created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        visit_count   INTEGER NOT NULL DEFAULT 0,
-        last_visit_at TEXT
-      );
-      CREATE TABLE IF NOT EXISTS sessions (
-        token_hash TEXT PRIMARY KEY,
-        user_id    INTEGER NOT NULL REFERENCES users(id),
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-      CREATE TABLE IF NOT EXISTS claims (
-        user_id    INTEGER NOT NULL REFERENCES users(id),
-        min_visits INTEGER NOT NULL,
-        claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (user_id, min_visits)
-      );
-    `);
-
-    const server = app.listen(PORT, "0.0.0.0", async () => {
-      const scanUrl = getScanUrl();
-      const isPublic = Boolean(getPublicUrl());
-
-      console.log(`Server Running at http://localhost:${PORT}/`);
-      console.log(`Database file: ${dbPath}`);
-      console.log("");
-      console.log("Addresses on this computer:");
-      for (const a of getLanAddresses()) {
-        console.log(`  http://${a.address}:${PORT}   (${a.name})`);
-      }
-      console.log("");
-      try {
-        console.log(await QRCode.toString(scanUrl, { type: "terminal", small: true }));
-      } catch (e) {
-        console.log(`Could not draw QR code: ${e.message}`);
-      }
-      console.log(`QR code points to: ${scanUrl}`);
-      if (isPublic) {
-        console.log("A public URL is set, so this QR code works on mobile data too.");
-      } else {
-        console.log("No public URL is set, so this QR code works only on the same Wi-Fi.");
-        console.log("For mobile data, run a tunnel and set PUBLIC_URL to its https link.");
-      }
-      console.log(`1) Test on your phone first: ${getBaseUrl()}/health   (should show OK)`);
-      console.log(`2) QR image page on your computer: http://localhost:${PORT}/qr`);
-      if (isPublic) {
-        console.log(`3) Admin Dashboard:`);
-        console.log(`   On this computer: http://localhost:${PORT}/dashboard`);
-        console.log(`   Online link:      ${getBaseUrl()}/dashboard`);
-      } else {
-        console.log(`3) Admin Dashboard: http://localhost:${PORT}/dashboard`);
-      }
-    });
-
-    server.on("error", (e) => {
-      if (e.code === "EADDRINUSE") {
-        console.log(`Port ${PORT} is already in use. Run: Stop-Process -Name node -Force`);
-      } else {
-        console.log(`Server Error: ${e.message}`);
-      }
-      process.exit(1);
-    });
-  } catch (e) {
-    console.log(`DB Error: ${e.message}`);
-    process.exit(1);
   }
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      email         TEXT NOT NULL UNIQUE,
+      created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      visit_count   INTEGER NOT NULL DEFAULT 0,
+      last_visit_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS sessions (
+      token_hash TEXT PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS claims (
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      min_visits INTEGER NOT NULL,
+      claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, min_visits)
+    );
+  `);
 };
 
-initializeDBAndServer();
+const databaseReady = initializeDatabase();
+app.locals.databaseReady = databaseReady;
 
 // --- Helpers ---
 const hashToken = (token) =>
@@ -440,3 +430,57 @@ app.post("/api/logout", async (request, response) => {
 });
 
 require("./dashboard")(app, { getDb: () => db, getCookie, OFFERS, toIso });
+
+if (require.main === module) {
+  databaseReady
+    .then(() => {
+      const scanUrl = getScanUrl();
+      const isPublic = Boolean(getPublicUrl());
+      const server = app.listen(PORT, "0.0.0.0", async () => {
+        console.log(`Server Running at http://localhost:${PORT}/`);
+        console.log(
+          process.env.TURSO_DATABASE_URL
+            ? "Database: Turso/libSQL"
+            : `Database file: ${dbPath}`
+        );
+        console.log("");
+        console.log("Addresses on this computer:");
+        for (const address of getLanAddresses()) {
+          console.log(`  http://${address.address}:${PORT}   (${address.name})`);
+        }
+        console.log("");
+        try {
+          console.log(await QRCode.toString(scanUrl, { type: "terminal", small: true }));
+        } catch (error) {
+          console.log(`Could not draw QR code: ${error.message}`);
+        }
+        console.log(`QR code points to: ${scanUrl}`);
+        if (isPublic) {
+          console.log("A public URL is set, so this QR code works on mobile data too.");
+        } else {
+          console.log("No public URL is set, so this QR code works only on the same Wi-Fi.");
+          console.log("For mobile data, run a tunnel and set PUBLIC_URL to its https link.");
+        }
+        console.log(`1) Test on your phone first: ${getBaseUrl()}/health   (should show OK)`);
+        console.log(`2) QR image page on your computer: http://localhost:${PORT}/qr`);
+        if (isPublic) {
+          console.log("3) Admin Dashboard:");
+          console.log(`   On this computer: http://localhost:${PORT}/dashboard`);
+          console.log(`   Online link:      ${getBaseUrl()}/dashboard`);
+        } else {
+          console.log("3) Admin Dashboard: http://localhost:${PORT}/dashboard");
+        }
+      });
+
+      server.on("error", (error) => {
+        console.error(`Server Error: ${error.message}`);
+        process.exit(1);
+      });
+    })
+    .catch((error) => {
+      console.error(`DB Error: ${error.message}`);
+      process.exit(1);
+    });
+}
+
+module.exports = app;
