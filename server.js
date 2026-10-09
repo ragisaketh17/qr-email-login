@@ -1,6 +1,31 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
+
+// Load environment variables from .env file if present
+const envPath = path.join(__dirname, ".env");
+if (fs.existsSync(envPath)) {
+  try {
+    if (typeof process.loadEnvFile === "function") {
+      process.loadEnvFile(envPath);
+    } else {
+      const content = fs.readFileSync(envPath, "utf-8");
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx !== -1) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          const val = trimmed.slice(eqIdx + 1).trim().replace(/^['"](.*)['"]$/, "$1");
+          if (!process.env[key]) process.env[key] = val;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Warning: Could not load .env file:", err.message);
+  }
+}
+
 const os = require("os");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
@@ -105,11 +130,15 @@ const normalizeUrl = (value) => {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 };
 
+const getPublicUrl = () =>
+  process.env.PUBLIC_URL?.trim() || process.env.RENDER_EXTERNAL_URL?.trim() || "";
+
 // If PUBLIC_URL is set (tunnel or deployed site), that wins. Works on mobile data.
 // Otherwise we use the computer's Wi-Fi address, which only works on the same Wi-Fi.
 const getBaseUrl = () => {
-  if (process.env.PUBLIC_URL && process.env.PUBLIC_URL.trim()) {
-    return normalizeUrl(process.env.PUBLIC_URL);
+  const publicUrl = getPublicUrl();
+  if (publicUrl) {
+    return normalizeUrl(publicUrl);
   }
   const best = getLanAddresses().sort((a, b) => scoreAddress(b) - scoreAddress(a))[0];
   return `http://${best ? best.address : "localhost"}:${PORT}`;
@@ -152,7 +181,7 @@ const initializeDBAndServer = async () => {
 
     const server = app.listen(PORT, "0.0.0.0", async () => {
       const scanUrl = getScanUrl();
-      const isPublic = Boolean(process.env.PUBLIC_URL && process.env.PUBLIC_URL.trim());
+      const isPublic = Boolean(getPublicUrl());
 
       console.log(`Server Running at http://localhost:${PORT}/`);
       console.log(`Database file: ${dbPath}`);
@@ -169,13 +198,20 @@ const initializeDBAndServer = async () => {
       }
       console.log(`QR code points to: ${scanUrl}`);
       if (isPublic) {
-        console.log("PUBLIC_URL is set, so this QR code works on mobile data too.");
+        console.log("A public URL is set, so this QR code works on mobile data too.");
       } else {
-        console.log("No PUBLIC_URL set, so this QR code works only on the same Wi-Fi.");
+        console.log("No public URL is set, so this QR code works only on the same Wi-Fi.");
         console.log("For mobile data, run a tunnel and set PUBLIC_URL to its https link.");
       }
       console.log(`1) Test on your phone first: ${getBaseUrl()}/health   (should show OK)`);
       console.log(`2) QR image page on your computer: http://localhost:${PORT}/qr`);
+      if (isPublic) {
+        console.log(`3) Admin Dashboard:`);
+        console.log(`   On this computer: http://localhost:${PORT}/dashboard`);
+        console.log(`   Online link:      ${getBaseUrl()}/dashboard`);
+      } else {
+        console.log(`3) Admin Dashboard: http://localhost:${PORT}/dashboard`);
+      }
     });
 
     server.on("error", (e) => {
@@ -402,3 +438,5 @@ app.post("/api/logout", async (request, response) => {
   response.clearCookie(COOKIE_NAME);
   response.json({ ok: true });
 });
+
+require("./dashboard")(app, { getDb: () => db, getCookie, OFFERS, toIso });

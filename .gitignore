@@ -1,0 +1,11 @@
+node_modules
+client/node_modules
+client/dist
+users.db
+users.db-wal
+users.db-shm
+qr.png
+cloudflared.exe
+tunnel.log
+tunnel.log.out
+.env
