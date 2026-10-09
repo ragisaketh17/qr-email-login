@@ -165,9 +165,8 @@ let db = null;
 const createLibsqlDatabase = () => {
   const { createClient } = require("@libsql/client");
   const client = createClient({
-    // plain https works best on Vercel
-    url: process.env.TURSO_DATABASE_URL.replace(/^libsql:\/\//, "https://"),
-    authToken: process.env.TURSO_AUTH_TOKEN,
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
   });
 
   return {
@@ -234,7 +233,9 @@ const initializeDatabase = async () => {
 
 const databaseReady = initializeDatabase();
 app.locals.databaseReady = databaseReady;
-databaseReady.catch(() => { }); // stops a startup error from crashing Node; the middleware below reports it
+databaseReady.catch((err) => {
+  console.error("DATABASE ERROR:", err);
+}); // stops a startup error from crashing Node; the middleware below reports it
 
 // --- Helpers ---
 const hashToken = (token) =>
