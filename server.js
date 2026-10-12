@@ -43,8 +43,8 @@ const COOKIE_NAME = "mart_session";
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-// --- OFFERS: edit these to match your mart. Keep them in order, smallest minVisits first. ---
-const OFFERS = [
+// --- DEFAULT OFFERS: used until the owner edits offers on the dashboard (Edit offers page). ---
+const DEFAULT_OFFERS = [
   {
     minVisits: 1,
     icon: "🎟️",
@@ -72,8 +72,8 @@ const OFFERS = [
 ];
 
 // claims is a Map of minVisits -> time the reward was claimed
-const buildOffers = (visits, claims = new Map()) => {
-  const offers = OFFERS.map((offer) => {
+const buildOffers = (visits, claims = new Map(), offerList = DEFAULT_OFFERS) => {
+  const offers = offerList.map((offer) => {
     const unlocked = visits >= offer.minVisits;
     const claimedAt = claims.get(offer.minVisits) || null;
     const status = claimedAt ? "claimed" : unlocked ? "available" : "locked";
@@ -83,7 +83,7 @@ const buildOffers = (visits, claims = new Map()) => {
     (last, offer, index) => (offer.unlocked ? index : last),
     -1
   );
-  const nextOffer = OFFERS.find((offer) => visits < offer.minVisits);
+  const nextOffer = offerList.find((offer) => visits < offer.minVisits);
   const next = nextOffer
     ? { headline: nextOffer.headline, visitsAway: nextOffer.minVisits - visits }
     : null;
@@ -164,6 +164,7 @@ const initializeDatabase = async () => {
     users: database.collection("users"),
     sessions: database.collection("sessions"),
     claims: database.collection("claims"),
+    settings: database.collection("settings"),
   };
 
   await Promise.all([
@@ -177,6 +178,12 @@ const initializeDatabase = async () => {
 const databaseReady = initializeDatabase();
 app.locals.databaseReady = databaseReady;
 databaseReady.catch(() => { }); // stops a startup error from crashing Node; the middleware below reports it
+
+// --- Offers: the owner's edited list is saved in MongoDB. Falls back to the defaults. ---
+const getOffers = async () => {
+  const doc = await db.settings.findOne({ _id: "offers" });
+  return Array.isArray(doc?.items) && doc.items.length > 0 ? doc.items : DEFAULT_OFFERS;
+};
 
 // --- Helpers ---
 const hashToken = (token) =>
@@ -218,20 +225,21 @@ const addVisit = async (userId) => {
 // What the page shows: email, visit count, offers and claimed status. Does NOT add a visit.
 const getStatus = async (userId) => {
   const user = await db.users.findOne({ _id: userId });
+  const offerList = await getOffers();
   const rows = await db.claims.find({ userId }).toArray();
   const claims = new Map(rows.map((row) => [row.minVisits, toIso(row.claimedAt)]));
   return {
     ok: true,
     email: user.email,
     visits: user.visitCount,
-    ...buildOffers(user.visitCount, claims),
+    ...buildOffers(user.visitCount, claims, offerList),
   };
 };
 
 // --- Middleware ---
 // Trust the tunnel / host proxy, so request.secure is true when the visitor used https.
 app.set("trust proxy", 1);
-app.use(express.json({ limit: "2kb" }));
+app.use(express.json({ limit: "32kb" }));
 app.use("/api", (request, response, next) => {
   response.set("Cache-Control", "no-store");
   next();
@@ -352,7 +360,7 @@ app.get("/api/me", async (request, response) => {
       response.clearCookie(COOKIE_NAME);
       return response.status(401).json({
         error: "Not signed in.",
-        offers: buildOffers(0).offers,
+        offers: buildOffers(0, new Map(), await getOffers()).offers,
       });
     }
     response.json(await getStatus(user._id));
@@ -371,7 +379,8 @@ app.post("/api/claim", async (request, response) => {
     }
 
     const minVisits = Number(request.body?.minVisits);
-    const offer = OFFERS.find((item) => item.minVisits === minVisits);
+    const offerList = await getOffers();
+    const offer = offerList.find((item) => item.minVisits === minVisits);
     if (!offer) {
       return response.status(400).json({ error: "Unknown reward." });
     }
@@ -407,8 +416,7 @@ app.post("/api/logout", async (request, response) => {
 });
 
 // The owner's dashboard lives in its own file (dashboard.js).
-// NOTE: dashboard.js must also be converted to MongoDB (getDb() now returns { users, sessions, claims } collections).
-require("./dashboard")(app, { getDb: () => db, getCookie, OFFERS, toIso });
+require("./dashboard")(app, { getDb: () => db, getCookie, getOffers, defaultOffers: DEFAULT_OFFERS, toIso });
 
 // --- Running on your computer: npm start ---
 // On Vercel nothing starts here. The app is exported on the last line instead.
