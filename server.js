@@ -29,22 +29,9 @@ if (fs.existsSync(envPath)) {
 const os = require("os");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
-
-const isVercel = Boolean(process.env.VERCEL);
-
-// The local SQLite packages are only loaded on your own computer.
-// On Vercel (or whenever Turso is used) they are never loaded, so they cannot crash the server.
-let open = null;
-let sqlite3 = null;
-
-if (!isVercel && !process.env.TURSO_DATABASE_URL) {
-  ({ open } = require("sqlite"));
-  sqlite3 = require("sqlite3");
-}
+const { MongoClient } = require("mongodb");
 
 const app = express();
-
-const dbPath = process.env.DB_PATH || path.join(__dirname, "users.db");
 
 const PORT = process.env.PORT || 3000;
 
@@ -103,8 +90,8 @@ const buildOffers = (visits, claims = new Map()) => {
   return { offers, currentIndex, next };
 };
 
-// SQLite stores "2026-10-07 09:30:00" (UTC). Turn it into a proper date string.
-const toIso = (sqliteTime) => `${sqliteTime.replace(" ", "T")}Z`;
+// MongoDB stores real Date objects. Turn one into an ISO date string.
+const toIso = (value) => new Date(value).toISOString();
 
 // --- Network helpers: find the address a phone should use ---
 const getLanAddresses = () => {
@@ -157,85 +144,38 @@ const getBaseUrl = () => {
 // The QR code points here. Every scan of this link adds one visit.
 const getScanUrl = () => `${getBaseUrl()}/scan`;
 
+// --- MongoDB ---
+// db.users, db.sessions and db.claims are MongoDB collections.
 let db = null;
-
-// Connects to Turso (the online database).
-// It gives back the same methods as the sqlite package (run, get, all, exec),
-// so none of the routes below have to change.
-const createLibsqlDatabase = () => {
-  const { createClient } = require("@libsql/client");
-  const client = createClient({
-  url: process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-  });
-
-  return {
-    async run(sql, args = []) {
-      const result = await client.execute({ sql, args });
-      return {
-        changes: Number(result.rowsAffected),
-        lastID: Number(result.lastInsertRowid),
-      };
-    },
-    async get(sql, args = []) {
-      const result = await client.execute({ sql, args });
-      return result.rows[0];
-    },
-    async all(sql, args = []) {
-      const result = await client.execute({ sql, args });
-      return result.rows;
-    },
-    exec(sql) {
-      return client.executeMultiple(sql);
-    },
-  };
-};
+let mongoClient = null;
 
 const initializeDatabase = async () => {
-  if (process.env.VERCEL && (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN)) {
-    throw new Error("TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are required on Vercel.");
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("MONGODB_URI is not set.");
   }
 
-  if (process.env.TURSO_DATABASE_URL) {
-  // Online database (use this on Vercel)
-  db = createLibsqlDatabase();
-  } else {
-    // Local file users.db (use this on your computer)
-    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    db = await open({
-      filename: dbPath,
-      driver: sqlite3.Database,
-    });
-    await db.run(`PRAGMA foreign_keys = ON;`);
-  }
+  mongoClient = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 });
+  await mongoClient.connect();
 
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      email         TEXT NOT NULL UNIQUE,
-      created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      visit_count   INTEGER NOT NULL DEFAULT 0,
-      last_visit_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      token_hash TEXT PRIMARY KEY,
-      user_id    INTEGER NOT NULL REFERENCES users(id),
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS claims (
-      user_id    INTEGER NOT NULL REFERENCES users(id),
-      min_visits INTEGER NOT NULL,
-      claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (user_id, min_visits)
-    );
-  `);
+  const database = mongoClient.db(process.env.MONGODB_DB || "qr_email_login");
+  db = {
+    users: database.collection("users"),
+    sessions: database.collection("sessions"),
+    claims: database.collection("claims"),
+  };
+
+  await Promise.all([
+    db.users.createIndex({ email: 1 }, { unique: true }),
+    db.sessions.createIndex({ tokenHash: 1 }, { unique: true }),
+    db.sessions.createIndex({ userId: 1 }),
+    db.claims.createIndex({ userId: 1, minVisits: 1 }, { unique: true }),
+  ]);
 };
 
 const databaseReady = initializeDatabase();
 app.locals.databaseReady = databaseReady;
-databaseReady.catch((err) => {
-  console.error("DATABASE ERROR:", err);
-}); // stops a startup error from crashing Node; the middleware below reports it
+databaseReady.catch(() => { }); // stops a startup error from crashing Node; the middleware below reports it
 
 // --- Helpers ---
 const hashToken = (token) =>
@@ -254,45 +194,36 @@ const getCookie = (request, name) => {
 const getUserFromRequest = async (request) => {
   const token = getCookie(request, COOKIE_NAME);
   if (!token) return null;
-  const user = await db.get(
-    `
-    SELECT users.* FROM sessions
-    JOIN users ON users.id = sessions.user_id
-    WHERE sessions.token_hash = ?;
-    `,
-    [hashToken(token)]
-  );
+  const session = await db.sessions.findOne({ tokenHash: hashToken(token) });
+  if (!session) return null;
+  const user = await db.users.findOne({ _id: session.userId });
   return user || null;
 };
 
 // Adds 1 visit. Returns true if it was counted.
 const addVisit = async (userId) => {
-  const result = await db.run(
-    `
-    UPDATE users
-    SET visit_count = visit_count + 1, last_visit_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-      AND (last_visit_at IS NULL
-           OR (julianday('now') - julianday(last_visit_at)) * 1440 >= ?);
-    `,
-    [userId, VISIT_COOLDOWN_MINUTES]
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - VISIT_COOLDOWN_MINUTES * 60 * 1000);
+  const result = await db.users.updateOne(
+    {
+      _id: userId,
+      $or: [{ lastVisitAt: null }, { lastVisitAt: { $lte: cutoff } }],
+    },
+    { $inc: { visitCount: 1 }, $set: { lastVisitAt: now } }
   );
-  return result.changes === 1;
+  return result.modifiedCount === 1;
 };
 
 // What the page shows: email, visit count, offers and claimed status. Does NOT add a visit.
 const getStatus = async (userId) => {
-  const user = await db.get(`SELECT * FROM users WHERE id = ?;`, [userId]);
-  const rows = await db.all(
-    `SELECT min_visits, claimed_at FROM claims WHERE user_id = ?;`,
-    [userId]
-  );
-  const claims = new Map(rows.map((row) => [row.min_visits, toIso(row.claimed_at)]));
+  const user = await db.users.findOne({ _id: userId });
+  const rows = await db.claims.find({ userId }).toArray();
+  const claims = new Map(rows.map((row) => [row.minVisits, toIso(row.claimedAt)]));
   return {
     ok: true,
     email: user.email,
-    visits: user.visit_count,
-    ...buildOffers(user.visit_count, claims),
+    visits: user.visitCount,
+    ...buildOffers(user.visitCount, claims),
   };
 };
 
@@ -317,7 +248,7 @@ app.use(async (request, response, next) => {
     next();
   } catch (e) {
     console.log(`DB Error: ${e.message}`);
-    response.status(500).json({ error: "Database not available. Check the Turso settings." });
+    response.status(500).json({ error: "Database not available. Check the MongoDB settings." });
   }
 });
 
@@ -354,7 +285,7 @@ app.get("/scan", async (request, response) => {
   try {
     const user = await getUserFromRequest(request);
     if (user) {
-      counted = await addVisit(user.id);
+      counted = await addVisit(user._id);
     }
   } catch (e) {
     console.log(`Scan Error: ${e.message}`);
@@ -373,14 +304,29 @@ app.post("/api/login", async (request, response) => {
   }
 
   try {
-    await db.run(`INSERT OR IGNORE INTO users (email) VALUES (?);`, [email]);
-    const user = await db.get(`SELECT * FROM users WHERE email = ?;`, [email]);
+    // Find the user, or create them if this email is new.
+    let user;
+    try {
+      user = await db.users.findOneAndUpdate(
+        { email },
+        { $setOnInsert: { createdAt: new Date(), visitCount: 0, lastVisitAt: null } },
+        { upsert: true, returnDocument: "after" }
+      );
+    } catch (e) {
+      // Two requests created the same email at the same moment: just read it.
+      if (e.code === 11000) {
+        user = await db.users.findOne({ email });
+      } else {
+        throw e;
+      }
+    }
 
     const token = crypto.randomBytes(32).toString("hex");
-    await db.run(
-      `INSERT INTO sessions (token_hash, user_id) VALUES (?, ?);`,
-      [hashToken(token), user.id]
-    );
+    await db.sessions.insertOne({
+      tokenHash: hashToken(token),
+      userId: user._id,
+      createdAt: new Date(),
+    });
 
     response.cookie(COOKIE_NAME, token, {
       httpOnly: true,
@@ -389,8 +335,8 @@ app.post("/api/login", async (request, response) => {
       maxAge: ONE_YEAR_MS,
     });
 
-    const counted = await addVisit(user.id);
-    response.json({ ...(await getStatus(user.id)), newVisit: counted });
+    const counted = await addVisit(user._id);
+    response.json({ ...(await getStatus(user._id)), newVisit: counted });
   } catch (e) {
     console.log(`Login Error: ${e.message}`);
     response.status(500).json({ error: "Could not save your email. Try again." });
@@ -408,7 +354,7 @@ app.get("/api/me", async (request, response) => {
         offers: buildOffers(0).offers,
       });
     }
-    response.json(await getStatus(user.id));
+    response.json(await getStatus(user._id));
   } catch (e) {
     console.log(`Me Error: ${e.message}`);
     response.status(500).json({ error: "Something went wrong. Try again." });
@@ -428,16 +374,17 @@ app.post("/api/claim", async (request, response) => {
     if (!offer) {
       return response.status(400).json({ error: "Unknown reward." });
     }
-    if (user.visit_count < offer.minVisits) {
+    if (user.visitCount < offer.minVisits) {
       return response.status(400).json({ error: "This reward is not unlocked yet." });
     }
 
-    const result = await db.run(
-      `INSERT OR IGNORE INTO claims (user_id, min_visits) VALUES (?, ?);`,
-      [user.id, offer.minVisits]
+    const result = await db.claims.updateOne(
+      { userId: user._id, minVisits: offer.minVisits },
+      { $setOnInsert: { claimedAt: new Date() } },
+      { upsert: true }
     );
 
-    response.json({ ...(await getStatus(user.id)), justClaimed: result.changes === 1 });
+    response.json({ ...(await getStatus(user._id)), justClaimed: result.upsertedCount === 1 });
   } catch (e) {
     console.log(`Claim Error: ${e.message}`);
     response.status(500).json({ error: "Could not claim the reward. Try again." });
@@ -449,7 +396,7 @@ app.post("/api/logout", async (request, response) => {
   const token = getCookie(request, COOKIE_NAME);
   try {
     if (token) {
-      await db.run(`DELETE FROM sessions WHERE token_hash = ?;`, [hashToken(token)]);
+      await db.sessions.deleteOne({ tokenHash: hashToken(token) });
     }
   } catch (e) {
     console.log(`Logout Error: ${e.message}`);
@@ -458,10 +405,11 @@ app.post("/api/logout", async (request, response) => {
   response.json({ ok: true });
 });
 
-// The owner's dashboard lives in its own file (dashboard.js)
+// The owner's dashboard lives in its own file (dashboard.js).
+// NOTE: dashboard.js must also be converted to MongoDB (getDb() now returns { users, sessions, claims } collections).
 require("./dashboard")(app, { getDb: () => db, getCookie, OFFERS, toIso });
 
-// --- Running on your computer: npm start / start.ps1 ---
+// --- Running on your computer: npm start ---
 // On Vercel nothing starts here. The app is exported on the last line instead.
 if (require.main === module) {
   databaseReady
@@ -470,11 +418,7 @@ if (require.main === module) {
       const isPublic = Boolean(getPublicUrl());
       const server = app.listen(PORT, "0.0.0.0", async () => {
         console.log(`Server Running at http://localhost:${PORT}/`);
-        console.log(
-          process.env.TURSO_DATABASE_URL
-            ? "Database: Turso/libSQL"
-            : `Database file: ${dbPath}`
-        );
+        console.log("Database: MongoDB");
         console.log("");
         console.log("Addresses on this computer:");
         for (const address of getLanAddresses()) {
