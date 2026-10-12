@@ -125,6 +125,7 @@ const normalizeUrl = (value) => {
 };
 
 const getPublicUrl = () =>
+  process.env.SITE_URL?.trim() ||
   process.env.PUBLIC_URL?.trim() ||
   process.env.RENDER_EXTERNAL_URL?.trim() ||
   process.env.VERCEL_URL?.trim() ||
