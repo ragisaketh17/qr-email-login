@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit offers</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #f4f5f7; color: #1f2430; margin: 0; padding: 16px; }
+    .wrap { max-width: 860px; margin: 0 auto; }
+    h1 { margin: 0 0 4px; font-size: 1.5rem; }
+    p.hint { margin: 0 0 16px; color: #5b6272; font-size: .95rem; }
+    a.back { display: inline-block; margin-bottom: 12px; color: #2557d6; text-decoration: none; font-weight: 600; }
+    .card { background: #fff; border: 1px solid #e1e4ea; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+    .row { display: grid; grid-template-columns: 90px 70px 1fr; gap: 10px; margin-bottom: 10px; }
+    .row.second { grid-template-columns: 1fr auto; margin-bottom: 0; align-items: end; }
+    label { display: block; font-size: .78rem; font-weight: 600; color: #5b6272; margin-bottom: 4px; }
+    input { width: 100%; padding: 9px 10px; border: 1px solid #cfd4de; border-radius: 8px; font-size: 1rem; }
+    button { padding: 10px 16px; border: 0; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    .primary { background: #1a7f4b; color: #fff; }
+    .secondary { background: #e8ebf1; color: #1f2430; }
+    .danger { background: #fde8e8; color: #b42318; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    #status { margin-top: 12px; font-weight: 600; }
+    #status.ok { color: #1a7f4b; }
+    #status.err { color: #b42318; }
+    .note { font-size: .85rem; color: #5b6272; margin-top: 16px; }
+    @media (max-width: 520px) { .row { grid-template-columns: 1fr 1fr; } .row label.wide, .row .wide { grid-column: 1 / -1; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/dashboard">&larr; Back to dashboard</a>
+    <h1>Edit offers</h1>
+    <p class="hint">Change the rewards customers unlock. Changes go live as soon as you press Save.</p>
+
+    <div id="signin" class="card" hidden>
+      Please <a href="/dashboard">sign in on the dashboard</a> first, then come back to this page.
+    </div>
+
+    <div id="editor" hidden>
+      <div id="list"></div>
+      <div class="actions">
+        <button class="secondary" id="add" type="button">+ Add offer</button>
+        <button class="primary" id="save" type="button">Save changes</button>
+        <button class="danger" id="reset" type="button">Reset to defaults</button>
+      </div>
+      <div id="status"></div>
+      <p class="note">
+        "Visits" is how many visits a customer needs to unlock the offer. Each number can be used once.
+        If you change the visits number of an offer that customers already claimed, their claim stays linked to the old number.
+      </p>
+    </div>
+  </div>
+
+<script>
+  const listEl = document.getElementById("list");
+  const statusEl = document.getElementById("status");
+  let offers = [];
+
+  function say(message, ok) {
+    statusEl.textContent = message;
+    statusEl.className = ok ? "ok" : "err";
+  }
+
+  function field(labelText, input, extraClass) {
+    const wrap = document.createElement("div");
+    if (extraClass) wrap.className = extraClass;
+    const label = document.createElement("label");
+    label.textContent = labelText;
+    wrap.append(label, input);
+    return wrap;
+  }
+
+  function makeInput(value, type, maxLength, placeholder) {
+    const input = document.createElement("input");
+    input.type = type;
+    input.value = value;
+    if (maxLength) input.maxLength = maxLength;
+    if (placeholder) input.placeholder = placeholder;
+    if (type === "number") { input.min = "1"; input.max = "1000"; input.step = "1"; }
+    return input;
+  }
+
+  function render() {
+    listEl.textContent = "";
+    offers.forEach((offer, index) => {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const visits = makeInput(offer.minVisits, "number", 0, "3");
+      const icon = makeInput(offer.icon, "text", 8, "🎁");
+      const headline = makeInput(offer.headline, "text", 60, "Get 10% OFF");
+      const text = makeInput(offer.text, "text", 200, "Regular customer: 10% off your bill today.");
+
+      visits.addEventListener("input", () => { offers[index].minVisits = visits.value; });
+      icon.addEventListener("input", () => { offers[index].icon = icon.value; });
+      headline.addEventListener("input", () => { offers[index].headline = headline.value; });
+      text.addEventListener("input", () => { offers[index].text = text.value; });
+
+      const top = document.createElement("div");
+      top.className = "row";
+      top.append(field("Visits", visits), field("Icon", icon), field("Title", headline, "wide"));
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "danger";
+      remove.textContent = "Delete";
+      remove.addEventListener("click", () => { offers.splice(index, 1); render(); });
+
+      const bottom = document.createElement("div");
+      bottom.className = "row second";
+      bottom.append(field("Message shown to the customer", text), remove);
+
+      card.append(top, bottom);
+      listEl.append(card);
+    });
+  }
+
+  async function request(url, options) {
+    const response = await fetch(url, options);
+    let data = {};
+    try { data = await response.json(); } catch (e) { /* no body */ }
+    return { response, data };
+  }
+
+  async function load() {
+    try {
+      const { response, data } = await request("/admin/offers");
+      if (response.status === 401) {
+        document.getElementById("signin").hidden = false;
+        return;
+      }
+      if (!response.ok) throw new Error(data.error || "Could not load the offers.");
+      offers = data.offers.map((o) => ({ ...o }));
+      document.getElementById("editor").hidden = false;
+      render();
+    } catch (e) {
+      document.getElementById("editor").hidden = false;
+      say(e.message, false);
+    }
+  }
+
+  document.getElementById("add").addEventListener("click", () => {
+    const highest = offers.reduce((max, o) => Math.max(max, Number(o.minVisits) || 0), 0);
+    offers.push({ minVisits: highest + 1, icon: "🎁", headline: "", text: "" });
+    render();
+  });
+
+  document.getElementById("save").addEventListener("click", async () => {
+    say("Saving...", true);
+    try {
+      const { response, data } = await request("/admin/offers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offers }),
+      });
+      if (!response.ok) throw new Error(data.error || "Could not save.");
+      offers = data.offers.map((o) => ({ ...o }));
+      render();
+      say("Saved. Customers see the new offers now.", true);
+    } catch (e) {
+      say(e.message, false);
+    }
+  });
+
+  document.getElementById("reset").addEventListener("click", async () => {
+    if (!confirm("Reset all offers back to the original list?")) return;
+    try {
+      const { response, data } = await request("/admin/offers/reset", { method: "POST" });
+      if (!response.ok) throw new Error(data.error || "Could not reset.");
+      offers = data.offers.map((o) => ({ ...o }));
+      render();
+      say("Offers were reset to the defaults.", true);
+    } catch (e) {
+      say(e.message, false);
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
