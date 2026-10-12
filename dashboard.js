@@ -1,5 +1,5 @@
-// dashboard.js - the mart owner's dashboard.
-// server.js loads this file with ONE line (see Step 3).
+// dashboard.js - the mart owner's dashboard (MongoDB version).
+// server.js loads this file with one line: require("./dashboard")(app, {...})
 const crypto = require("crypto");
 
 module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso }) {
@@ -28,13 +28,22 @@ module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso })
   const isAdmin = (request) =>
     sameText(getCookie(request, ADMIN_COOKIE) || "", ADMIN_TOKEN);
 
-  // Database helpers that work with both the SQLite and the Turso version
-  const adminAll = async (sql, args = []) => {
-    const db = getDb();
-    if (typeof db.all === "function") return db.all(sql, args); // sqlite package
-    return (await db.execute({ sql, args })).rows;               // Turso client
+  // The moment "today" started in your timezone, as a UTC Date
+  const startOfToday = () => {
+    const offsetMs = DASHBOARD_UTC_OFFSET * 60 * 1000;
+    const local = new Date(Date.now() + offsetMs);
+    return new Date(
+      Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - offsetMs
+    );
   };
-  const adminOne = async (sql, args = []) => (await adminAll(sql, args))[0] || null;
+
+  // Map of userId -> how many rewards that customer claimed
+  const getClaimCounts = async (db) => {
+    const rows = await db.claims
+      .aggregate([{ $group: { _id: "$userId", n: { $sum: 1 } } }])
+      .toArray();
+    return new Map(rows.map((row) => [String(row._id), row.n]));
+  };
 
   // Never let the browser keep a copy of dashboard data
   app.use("/admin", (request, response, next) => {
@@ -85,81 +94,72 @@ module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso })
     }
 
     try {
-      // Turns 330 into "+330 minutes" so SQLite can shift UTC times to your local day
-      const shift = `${DASHBOARD_UTC_OFFSET >= 0 ? "+" : ""}${DASHBOARD_UTC_OFFSET} minutes`;
+      const db = getDb();
+      const todayStart = startOfToday();
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
       // 1) The cards at the top
-      const totals = await adminOne(
-        `SELECT
-           COUNT(*) AS customers,
-           COALESCE(SUM(visit_count), 0) AS totalVisits,
-           COALESCE(SUM(CASE WHEN date(created_at, ?) = date('now', ?) THEN 1 ELSE 0 END), 0) AS newToday,
-           COALESCE(SUM(CASE WHEN last_visit_at IS NOT NULL
-                             AND date(last_visit_at, ?) = date('now', ?) THEN 1 ELSE 0 END), 0) AS visitedToday,
-           COALESCE(SUM(CASE WHEN last_visit_at IS NOT NULL
-                             AND last_visit_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END), 0) AS visited7Days
-         FROM users`,
-        [shift, shift, shift, shift]
-      );
-
-      const claimTotals = await adminOne(
-        `SELECT
-           COUNT(*) AS claimed,
-           COALESCE(SUM(CASE WHEN date(claimed_at, ?) = date('now', ?) THEN 1 ELSE 0 END), 0) AS claimedToday
-         FROM claims`,
-        [shift, shift]
-      );
+      const [
+        customers,
+        visitSums,
+        newToday,
+        visitedToday,
+        visited7Days,
+        claimed,
+        claimedToday,
+      ] = await Promise.all([
+        db.users.countDocuments({}),
+        db.users
+          .aggregate([{ $group: { _id: null, total: { $sum: "$visitCount" } } }])
+          .toArray(),
+        db.users.countDocuments({ createdAt: { $gte: todayStart } }),
+        db.users.countDocuments({ lastVisitAt: { $gte: todayStart } }),
+        db.users.countDocuments({ lastVisitAt: { $gte: sevenDaysAgo } }),
+        db.claims.countDocuments({}),
+        db.claims.countDocuments({ claimedAt: { $gte: todayStart } }),
+      ]);
+      const totalVisits = visitSums[0]?.total ?? 0;
 
       // 2) One row per reward: how many unlocked it, how many claimed it
       const offers = [];
       for (const offer of OFFERS) {
-        const unlocked = await adminOne(
-          "SELECT COUNT(*) AS n FROM users WHERE visit_count >= ?",
-          [offer.minVisits]
-        );
-        const claimed = await adminOne(
-          "SELECT COUNT(*) AS n FROM claims WHERE min_visits = ?",
-          [offer.minVisits]
-        );
+        const [unlocked, claimedCount] = await Promise.all([
+          db.users.countDocuments({ visitCount: { $gte: offer.minVisits } }),
+          db.claims.countDocuments({ minVisits: offer.minVisits }),
+        ]);
         offers.push({
           minVisits: offer.minVisits,
           headline: offer.headline,
-          unlocked: Number(unlocked.n),
-          claimed: Number(claimed.n),
+          unlocked,
+          claimed: claimedCount,
         });
       }
 
       // 3) The customers table (most visits first)
-      const customerRows = await adminAll(
-        `SELECT u.email,
-                u.visit_count AS visits,
-                u.created_at AS joined,
-                u.last_visit_at AS lastVisit,
-                (SELECT COUNT(*) FROM claims c WHERE c.user_id = u.id) AS claimed
-         FROM users u
-         ORDER BY u.visit_count DESC, u.last_visit_at DESC
-         LIMIT 1000`
-      );
-      const customers = customerRows.map((row) => ({
+      const claimCounts = await getClaimCounts(db);
+      const customerRows = await db.users
+        .find({})
+        .sort({ visitCount: -1, lastVisitAt: -1 })
+        .limit(1000)
+        .toArray();
+      const customerList = customerRows.map((row) => ({
         email: row.email,
-        visits: Number(row.visits),
-        claimed: Number(row.claimed),
-        joined: toIso(row.joined),
-        lastVisit: row.lastVisit ? toIso(row.lastVisit) : null,
+        visits: Number(row.visitCount),
+        claimed: claimCounts.get(String(row._id)) || 0,
+        joined: toIso(row.createdAt),
+        lastVisit: row.lastVisitAt ? toIso(row.lastVisitAt) : null,
       }));
 
       // 4) The 20 most recent claims
-      const claimRows = await adminAll(
-        `SELECT u.email, c.min_visits AS minVisits, c.claimed_at AS claimedAt
-         FROM claims c
-         JOIN users u ON u.id = c.user_id
-         ORDER BY c.claimed_at DESC
-         LIMIT 20`
-      );
+      const claimRows = await db.claims.find({}).sort({ claimedAt: -1 }).limit(20).toArray();
+      const claimUsers = await db.users
+        .find({ _id: { $in: claimRows.map((row) => row.userId) } })
+        .toArray();
+      const emailById = new Map(claimUsers.map((user) => [String(user._id), user.email]));
       const recentClaims = claimRows.map((row) => {
         const offer = OFFERS.find((item) => item.minVisits === Number(row.minVisits));
         return {
-          email: row.email,
+          email: emailById.get(String(row.userId)) || "(deleted user)",
           reward: offer ? offer.headline : `${row.minVisits} visits`,
           claimedAt: toIso(row.claimedAt),
         };
@@ -168,16 +168,16 @@ module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso })
       response.json({
         adminUser: DASHBOARD_USERNAME,
         summary: {
-          customers: Number(totals.customers),
-          totalVisits: Number(totals.totalVisits),
-          newToday: Number(totals.newToday),
-          visitedToday: Number(totals.visitedToday),
-          visited7Days: Number(totals.visited7Days),
-          claimed: Number(claimTotals.claimed),
-          claimedToday: Number(claimTotals.claimedToday),
+          customers,
+          totalVisits,
+          newToday,
+          visitedToday,
+          visited7Days,
+          claimed,
+          claimedToday,
         },
         offers,
-        customers,
+        customers: customerList,
         recentClaims,
       });
     } catch (e) {
@@ -193,15 +193,12 @@ module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso })
     }
 
     try {
-      const rows = await adminAll(
-        `SELECT u.email,
-                u.visit_count AS visits,
-                u.created_at AS joined,
-                u.last_visit_at AS lastVisit,
-                (SELECT COUNT(*) FROM claims c WHERE c.user_id = u.id) AS claimed
-         FROM users u
-         ORDER BY u.visit_count DESC`
-      );
+      const db = getDb();
+      const claimCounts = await getClaimCounts(db);
+      const rows = await db.users
+        .find({})
+        .sort({ visitCount: -1, lastVisitAt: -1 })
+        .toArray();
 
       // Wrap each value in quotes. A leading ' stops Excel from running anything like =1+1
       const cell = (value) => {
@@ -213,7 +210,15 @@ module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso })
       const lines = ["Email,Visits,Rewards claimed,Last visit (UTC),Joined (UTC)"];
       for (const row of rows) {
         lines.push(
-          [row.email, row.visits, row.claimed, row.lastVisit, row.joined].map(cell).join(",")
+          [
+            row.email,
+            row.visitCount,
+            claimCounts.get(String(row._id)) || 0,
+            row.lastVisitAt ? toIso(row.lastVisitAt) : "",
+            toIso(row.createdAt),
+          ]
+            .map(cell)
+            .join(",")
         );
       }
 
