@@ -2,7 +2,7 @@
 // server.js loads this file with one line: require("./dashboard")(app, {...})
 const crypto = require("crypto");
 
-module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso }) {
+module.exports = function addDashboard(app, { getDb, getCookie, getOffers, defaultOffers, toIso }) {
   const DASHBOARD_USERNAME = process.env.DASHBOARD_USERNAME || "admin";
   const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || "admin123";
 
@@ -54,6 +54,9 @@ module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso })
   // Short link: /dashboard opens the dashboard page
   app.get("/dashboard", (request, response) => response.redirect("/dashboard.html"));
 
+  // Short link: /dashboard/offers opens the page where the owner edits the offers
+  app.get("/dashboard/offers", (request, response) => response.redirect("/offers-admin.html"));
+
   // --- Sign in with Username and Password ---
   app.post("/admin/login", (request, response) => {
     const inputUsername = String(request.body?.username ?? "").trim();
@@ -87,6 +90,89 @@ module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso })
     response.json({ ok: true });
   });
 
+  // --- Checks and cleans the offers the owner typed. Throws a readable message if something is wrong. ---
+  const cleanOffers = (input) => {
+    if (!Array.isArray(input) || input.length === 0) {
+      throw new Error("Add at least one offer.");
+    }
+    if (input.length > 20) {
+      throw new Error("You can have at most 20 offers.");
+    }
+    const seen = new Set();
+    const cleaned = input.map((item, index) => {
+      const number = index + 1;
+      const minVisits = Number(item?.minVisits);
+      const icon = String(item?.icon ?? "").trim().slice(0, 8);
+      const headline = String(item?.headline ?? "").trim();
+      const text = String(item?.text ?? "").trim();
+
+      if (!Number.isInteger(minVisits) || minVisits < 1 || minVisits > 1000) {
+        throw new Error(`Offer ${number}: visits must be a whole number from 1 to 1000.`);
+      }
+      if (seen.has(minVisits)) {
+        throw new Error(`Offer ${number}: another offer already uses ${minVisits} visits.`);
+      }
+      seen.add(minVisits);
+      if (!headline || headline.length > 60) {
+        throw new Error(`Offer ${number}: the title must be 1 to 60 characters.`);
+      }
+      if (!text || text.length > 200) {
+        throw new Error(`Offer ${number}: the message must be 1 to 200 characters.`);
+      }
+      return { minVisits, icon: icon || "🎁", headline, text };
+    });
+    return cleaned.sort((a, b) => a.minVisits - b.minVisits);
+  };
+
+  // --- Offers: read, save, and reset to the built-in defaults ---
+  app.get("/admin/offers", async (request, response) => {
+    if (!isAdmin(request)) {
+      return response.status(401).json({ error: "Please sign in." });
+    }
+    try {
+      response.json({ offers: await getOffers() });
+    } catch (e) {
+      console.log(`Offers Error: ${e.message}`);
+      response.status(500).json({ error: "Could not load the offers." });
+    }
+  });
+
+  app.put("/admin/offers", async (request, response) => {
+    if (!isAdmin(request)) {
+      return response.status(401).json({ error: "Please sign in." });
+    }
+    let offers;
+    try {
+      offers = cleanOffers(request.body?.offers);
+    } catch (e) {
+      return response.status(400).json({ error: e.message });
+    }
+    try {
+      await getDb().settings.updateOne(
+        { _id: "offers" },
+        { $set: { items: offers, updatedAt: new Date() } },
+        { upsert: true }
+      );
+      response.json({ ok: true, offers });
+    } catch (e) {
+      console.log(`Offers Save Error: ${e.message}`);
+      response.status(500).json({ error: "Could not save the offers." });
+    }
+  });
+
+  app.post("/admin/offers/reset", async (request, response) => {
+    if (!isAdmin(request)) {
+      return response.status(401).json({ error: "Please sign in." });
+    }
+    try {
+      await getDb().settings.deleteOne({ _id: "offers" });
+      response.json({ ok: true, offers: defaultOffers });
+    } catch (e) {
+      console.log(`Offers Reset Error: ${e.message}`);
+      response.status(500).json({ error: "Could not reset the offers." });
+    }
+  });
+
   // --- All the numbers for the dashboard ---
   app.get("/admin/data", async (request, response) => {
     if (!isAdmin(request)) {
@@ -95,6 +181,7 @@ module.exports = function addDashboard(app, { getDb, getCookie, OFFERS, toIso })
 
     try {
       const db = getDb();
+      const OFFERS = await getOffers();
       const todayStart = startOfToday();
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
