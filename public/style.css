@@ -867,3 +867,6 @@ input[aria-invalid="true"] { border-color: #b3261e; }
 @media (prefers-reduced-motion: reduce) {
   .page { animation: none; }
 }
+.google-wrap { display: flex; justify-content: center; margin: 14px 0 6px; min-height: 44px; }
+.or-divider { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: #888; font-size: 13px; }
+.or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: #ddd; }
