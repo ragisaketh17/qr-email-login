@@ -9,6 +9,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+
+  <!-- Google Sign-In library -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <div class="app">
@@ -35,6 +38,23 @@
       <section id="login-view" hidden>
         <h2>Sign in to collect rewards</h2>
         <p class="sub">Every time you scan our QR code, your visit is counted and new offers unlock.</p>
+
+        <!-- Google sign-in -->
+        <div class="google-wrap">
+          <div id="g_id_onload"
+               data-client_id="YOUR_CLIENT_ID.apps.googleusercontent.com"
+               data-callback="handleGoogle"
+               data-auto_prompt="false"></div>
+          <div class="g_id_signin"
+               data-type="standard"
+               data-shape="pill"
+               data-theme="outline"
+               data-size="large"
+               data-text="continue_with"
+               data-logo_alignment="left"></div>
+        </div>
+
+        <div class="or-divider"><span>or use your email</span></div>
 
         <form id="login-form" novalidate>
           <label for="email">Email address</label>
@@ -111,6 +131,30 @@
   </div>
 
   <div class="toast" id="toast" role="status" hidden>Visit counted ✓</div>
+
+  <!-- Google callback: must be a global function -->
+  <script>
+    async function handleGoogle(response) {
+      const err = document.getElementById("error");
+      try {
+        const r = await fetch("/api/google-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: response.credential }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.ok) {
+          location.reload(); // your script.js then shows the rewards view
+        } else {
+          err.textContent = data.error || "Google sign-in failed. Try again.";
+          err.hidden = false;
+        }
+      } catch (e) {
+        err.textContent = "Network error. Try again.";
+        err.hidden = false;
+      }
+    }
+  </script>
 
   <script src="script.js"></script>
 </body>
