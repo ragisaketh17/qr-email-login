@@ -11,8 +11,8 @@
     "node": "22.x"
   },
   "dependencies": {
-    "google-auth-library": "^9.15.0"
     "express": "^4.19.2",
+    "google-auth-library": "^9.15.0",
     "mongodb": "^6.10.0",
     "qrcode": "^1.5.4"
   }
