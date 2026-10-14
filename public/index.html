@@ -135,7 +135,7 @@
   <!-- Google callback: must be a global function -->
   <script>
     async function handleGoogle(response) {
-      const err = document.getElementById("error");
+      const err = document.getElementById("google-error");
       try {
         const r = await fetch("/api/google-login", {
           method: "POST",
