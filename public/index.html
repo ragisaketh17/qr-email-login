@@ -36,35 +36,35 @@
     <main class="sheet">
       <!-- Sign-in view -->
       <section id="login-view" hidden>
-        <h2>Sign in to collect rewards</h2>
-        <p class="sub">Every time you scan our QR code, your visit is counted and new offers unlock.</p>
+  <h2>Sign in to collect rewards</h2>
+  <p class="sub">Every time you scan our QR code, your visit is counted and new offers unlock.</p>
 
-        <!-- Google sign-in -->
-        <div class="google-wrap">
-          <div id="g_id_onload"
-     data-client_id="545672913408-f7eg6idlpuhpcr0ufldakiqtbaq5t9js.apps.googleusercontent.com"
-     data-callback="handleGoogle"
-     data-auto_prompt="false"></div>
-          <div class="g_id_signin"
-               data-type="standard"
-               data-shape="pill"
-               data-theme="outline"
-               data-size="large"
-               data-text="continue_with"
-               data-logo_alignment="left"></div>
-        </div>
+  <div class="google-wrap">
+    <div id="g_id_onload"
+         data-client_id="545672913408-f7eg6idlpuhpcr0ufldakiqtbaq5t9js.apps.googleusercontent.com"
+         data-callback="handleGoogle"
+         data-auto_prompt="false"></div>
+    <div class="g_id_signin"
+         data-type="standard"
+         data-shape="pill"
+         data-theme="outline"
+         data-size="large"
+         data-text="continue_with"
+         data-logo_alignment="left"
+         data-width="280"></div>
+  </div>
 
-        <div class="or-divider"><span>or use your email</span></div>
+  <p id="google-error" class="error" role="alert" hidden></p>
 
-        <form id="login-form" novalidate>
-          <label for="email">Email address</label>
-          <input id="email" name="email" type="email" inputmode="email"
-                 autocomplete="email" placeholder="name@example.com" required>
-          <p id="error" class="error" role="alert" hidden></p>
-          <button id="submit" class="primary" type="submit">Sign in</button>
-        </form>
-      </section>
-
+  <!-- Email form kept but hidden, so script.js still finds its elements -->
+  <form id="login-form" novalidate style="display:none">
+    <label for="email">Email address</label>
+    <input id="email" name="email" type="email" inputmode="email"
+           autocomplete="email" placeholder="name@example.com" required>
+    <p id="error" class="error" role="alert" hidden></p>
+    <button id="submit" class="primary" type="submit">Sign in</button>
+  </form>
+</section>
       <!-- Rewards view -->
       <section id="rewards-view" hidden>
         <div class="rewards-head">
