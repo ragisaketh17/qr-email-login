@@ -30,6 +30,8 @@ const os = require("os");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
 const { MongoClient } = require("mongodb");
+const { OAuth2Client } = require("google-auth-library");
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const app = express();
 
@@ -349,6 +351,61 @@ app.post("/api/login", async (request, response) => {
   } catch (e) {
     console.log(`Login Error: ${e.message}`);
     response.status(500).json({ error: "Could not save your email. Try again." });
+  }
+});
+// --- API: Sign in with Google. Same result as email login, but the email comes from Google. ---
+app.post("/api/google-login", async (request, response) => {
+  try {
+    const credential = String(request.body?.credential ?? "");
+    if (!credential) {
+      return response.status(400).json({ error: "Missing Google sign-in." });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.email || !payload.email_verified) {
+      return response.status(400).json({ error: "Your Google email is not verified." });
+    }
+    const email = payload.email.trim().toLowerCase();
+
+    // Find the user, or create them if this email is new.
+    let user;
+    try {
+      user = await db.users.findOneAndUpdate(
+        { email },
+        { $setOnInsert: { createdAt: new Date(), visitCount: 0, lastVisitAt: null } },
+        { upsert: true, returnDocument: "after" }
+      );
+    } catch (e) {
+      if (e.code === 11000) {
+        user = await db.users.findOne({ email });
+      } else {
+        throw e;
+      }
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    await db.sessions.insertOne({
+      tokenHash: hashToken(token),
+      userId: user._id,
+      createdAt: new Date(),
+    });
+
+    response.cookie(COOKIE_NAME, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: request.secure,
+      maxAge: ONE_YEAR_MS,
+    });
+
+    const counted = await addVisit(user._id);
+    response.json({ ...(await getStatus(user._id)), newVisit: counted, name: payload.name });
+  } catch (e) {
+    console.log(`Google Login Error: ${e.message}`);
+    response.status(401).json({ error: "Google sign-in failed. Try again." });
   }
 });
 
