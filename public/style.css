@@ -869,3 +869,68 @@ input[aria-invalid="true"] { border-color: #b3261e; }
 }
 #login-view { text-align: center; }
 .google-wrap { display: flex; justify-content: center; margin: 24px 0 10px; min-height: 44px; }
+/* ---------- Google review link ---------- */
+.review-link[hidden] {
+  display: none !important;
+}
+
+.review-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 8px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #fff7fb;
+  border: 1.5px solid #f3c6dc;
+  color: #3b0021;
+  text-decoration: none;
+  font-family: 'Poppins', sans-serif;
+  box-shadow: 0 4px 14px rgba(59, 0, 33, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.review-link:hover,
+.review-link:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(59, 0, 33, 0.14);
+  outline: none;
+}
+
+.review-link:active {
+  transform: scale(0.98);
+}
+
+.review-stars {
+  font-size: 14px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.review-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  line-height: 1.3;
+}
+
+.review-text strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.review-text small {
+  font-size: 12px;
+  font-weight: 500;
+  color: #a1195b;
+}
+
+.review-arrow {
+  font-size: 24px;
+  font-weight: 600;
+  color: #a1195b;
+}
+
+@media (max-width: 380px) {
+  .review-stars { display: none; }
+}
