@@ -36,40 +36,36 @@
     <main class="sheet">
       <!-- Sign-in view -->
       <section id="login-view" hidden>
-  <h2>Sign in to collect rewards</h2>
-  <p class="sub">Every time you scan our QR code, your visit is counted and new offers unlock.</p>
+        <h2>Sign in to collect rewards</h2>
+        <p class="sub">Every time you scan our QR code, your visit is counted and new offers unlock.</p>
 
-  <div class="google-wrap">
-    <div id="g_id_onload"
-         data-client_id="545672913408-f7eg6idlpuhpcr0ufldakiqtbaq5t9js.apps.googleusercontent.com"
-         data-callback="handleGoogle"
-         data-auto_prompt="false"></div>
-    <div class="g_id_signin"
-         data-type="standard"
-         data-shape="pill"
-         data-theme="outline"
-         data-size="large"
-         data-text="continue_with"
-         data-logo_alignment="left"
-         data-width="280"></div>
-  </div>
+        <div class="google-wrap">
+          <div id="g_id_onload"
+               data-client_id="545672913408-f7eg6idlpuhpcr0ufldakiqtbaq5t9js.apps.googleusercontent.com"
+               data-callback="handleGoogle"
+               data-auto_prompt="false"></div>
+          <div class="g_id_signin"
+               data-type="standard"
+               data-shape="pill"
+               data-theme="outline"
+               data-size="large"
+               data-text="continue_with"
+               data-logo_alignment="left"
+               data-width="280"></div>
+        </div>
 
-  <p id="google-error" class="error" role="alert" hidden></p>
+        <p id="google-error" class="error" role="alert" hidden></p>
 
-  <!-- Email form kept but hidden, so script.js still finds its elements -->
-  <form id="login-form" novalidate style="display:none">
-    <label for="email">Email address</label>
-    <input id="email" name="email" type="email" inputmode="email"
-           autocomplete="email" placeholder="name@example.com" required>
-    <p id="error" class="error" role="alert" hidden></p>
-    <button id="submit" class="primary" type="submit">Sign in</button>
-  </form>
-          <!-- Review link (appears only when GOOGLE_REVIEW_URL is set) -->
-        <p class="review-link" id="review-link" hidden>
-          ⭐ Enjoying our mart?
-          <a id="review-anchor" href="#" target="_blank" rel="noopener">Review us on Google</a>
-        </p>
-</section>
+        <!-- Email form kept but hidden, so script.js still finds its elements -->
+        <form id="login-form" novalidate style="display:none">
+          <label for="email">Email address</label>
+          <input id="email" name="email" type="email" inputmode="email"
+                 autocomplete="email" placeholder="name@example.com" required>
+          <p id="error" class="error" role="alert" hidden></p>
+          <button id="submit" class="primary" type="submit">Sign in</button>
+        </form>
+      </section>
+
       <!-- Rewards view -->
       <section id="rewards-view" hidden>
         <div class="rewards-head">
@@ -93,6 +89,16 @@
 
         <p class="next" id="next" hidden></p>
       </section>
+
+      <!-- Google review link (shown only when GOOGLE_REVIEW_URL is set) -->
+      <a class="review-link" id="review-link" href="#" target="_blank" rel="noopener" hidden>
+        <span class="review-stars" aria-hidden="true">⭐⭐⭐⭐⭐</span>
+        <span class="review-text">
+          <strong>Enjoying our mart?</strong>
+          <small>Review us on Google</small>
+        </span>
+        <span class="review-arrow" aria-hidden="true">›</span>
+      </a>
     </main>
   </div>
 
@@ -149,7 +155,7 @@
         });
         const data = await r.json().catch(() => ({}));
         if (r.ok) {
-          location.reload(); // your script.js then shows the rewards view
+          location.reload(); // script.js then shows the rewards view
         } else {
           err.textContent = data.error || "Google sign-in failed. Try again.";
           err.hidden = false;
