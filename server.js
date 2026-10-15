@@ -45,6 +45,11 @@ const COOKIE_NAME = "mart_session";
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+// >>> NEW: Your Google review link (set GOOGLE_REVIEW_URL in .env and in Vercel). Leave it empty to hide the link.
+const GOOGLE_REVIEW_URL = /^https:\/\//.test((process.env.GOOGLE_REVIEW_URL || "").trim())
+  ? process.env.GOOGLE_REVIEW_URL.trim()
+  : "";
+
 // --- DEFAULT OFFERS: used until the owner edits offers on the dashboard (Edit offers page). ---
 const DEFAULT_OFFERS = [
   {
@@ -250,6 +255,13 @@ app.use("/api", (request, response, next) => {
 // --- Connection test (answers even if the database is down) ---
 app.get("/health", (request, response) => {
   response.type("text").send("OK");
+});
+
+// >>> NEW: The page asks this to show the review link. The value is safe to share.
+app.get("/api/config", (request, response) => {
+  response.json({
+    googleReviewUrl: GOOGLE_REVIEW_URL || null,
+  });
 });
 
 // Every request below waits until the database is ready (the first visit on Vercel needs this)
