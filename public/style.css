@@ -934,3 +934,41 @@ input[aria-invalid="true"] { border-color: #b3261e; }
 @media (max-width: 380px) {
   .review-stars { display: none; }
 }
+.follow-section {
+  margin-top: 28px;
+  text-align: center;
+}
+
+.follow-text {
+  font-size: 14px;
+  color: #6b6b6b;
+  margin-bottom: 12px;
+}
+
+.follow-icons {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.follow-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #d91a9c;
+  background: #fff5fb;
+  border: 1px solid #f3c6e4;
+  text-decoration: none;
+  transition: transform 0.15s, background 0.15s, color 0.15s;
+}
+
+.follow-btn:hover,
+.follow-btn:active {
+  background: #d91a9c;
+  color: #fff;
+  transform: translateY(-2px);
+}
