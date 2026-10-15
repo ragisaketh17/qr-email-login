@@ -450,6 +450,18 @@ document.addEventListener('keydown', (event) => {
 
 window.addEventListener('resize', () => { if (state) positionArrow(); });
 
+// Shows the Google review link if the server has GOOGLE_REVIEW_URL set
+async function loadReviewLink() {
+  try {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+    if (!data.googleReviewUrl) return;
+    const link = $('review-link');
+    link.href = data.googleReviewUrl;
+    link.hidden = false;
+  } catch (_) {}
+}
+
 // Runs every time the page opens.
 async function init() {
   // /scan sends people here with ?counted=1 after adding a visit
@@ -470,4 +482,5 @@ async function init() {
   showLogin([]);
 }
 
+loadReviewLink();
 init();
