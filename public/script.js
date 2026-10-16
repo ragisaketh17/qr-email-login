@@ -191,7 +191,7 @@ function renderStrip(offers, visits) {
       card.append(small);
     }
 
-    card.append(buildIcon(offer, index));
+    card.append(buildIcon(offer, index, visits !== null));
     strip.append(card);
   });
   strip.hidden = offers.length === 0;
