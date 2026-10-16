@@ -45,9 +45,19 @@ let popupRewardIndex = -1;  // reward shown in the visit pop-up (-1 = none)
 let toastTimer = null;
 
 const STATUS_TEXT = { claimed: 'Claimed', available: 'Available', locked: 'Locked' };
-// Social links (filled from /api/config) and the strip data, so the strip can be redrawn when links arrive
-let links = { google: '', instagram: '', facebook: '', rating: '' };
-let stripData = null;
+
+// ---------- Social links ----------
+// Put your real links here. The server (/api/config) overrides these when it sends its own.
+// A link that still contains YOUR_PAGE or YOUR_PLACE_ID is ignored, so nothing broken is shown.
+let links = {
+  google: '',   // e.g. https://search.google.com/local/writereview?placeid=YOUR_PLACE_ID
+  instagram: 'https://www.instagram.com/YOUR_PAGE',
+  facebook: 'https://www.facebook.com/YOUR_PAGE',
+  rating: ''    // e.g. 4.8 (optional)
+};
+let stripData = null; // lets the strip be redrawn when the links arrive
+
+const isReal = (url) => Boolean(url) && !/YOUR_PAGE|YOUR_PLACE_ID/.test(url);
 
 const GOOGLE_G = `<svg viewBox="0 0 48 48" aria-hidden="true">
   <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -64,18 +74,18 @@ const SOCIAL = [
 ];
 
 function buildIcon(offer, index, signedIn) {
-  // Only use the social icons after sign-in
+  // Social icons only after sign-in; the sign-in page keeps the original icons
   const social = signedIn ? SOCIAL[index] : null;
-  const url = social && links[social.key];
+  const url = social ? links[social.key] : '';
 
-  if (social && url) {
+  if (social && isReal(url)) {
     const a = document.createElement('a');
     a.className = `icon social ${social.cls}`;
     a.href = url;
     a.target = '_blank';
     a.rel = 'noopener';
     a.setAttribute('aria-label', social.label);
-    a.innerHTML = social.html;
+    a.innerHTML = social.html; // fixed markup defined above, not user data
 
     if (social.key === 'google' && links.rating) {
       const badge = document.createElement('span');
@@ -86,7 +96,7 @@ function buildIcon(offer, index, signedIn) {
     return a;
   }
 
-  // Sign-in page, or no link set: keep the original icon (ticket, coin, gift)
+  // Sign-in page, no link set, or more than 3 cards: keep the original icon
   const span = document.createElement('span');
   span.className = 'icon';
   span.setAttribute('aria-hidden', 'true');
@@ -94,13 +104,6 @@ function buildIcon(offer, index, signedIn) {
   return span;
 }
 
-  // No link set (or more than 3 cards): keep the original emoji icon
-  const span = document.createElement('span');
-  span.className = 'icon';
-  span.setAttribute('aria-hidden', 'true');
-  span.textContent = offer.icon;
-  return span;
-}
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // 1 -> 1st, 2 -> 2nd, 3 -> 3rd, 11 -> 11th, 21 -> 21st
@@ -196,6 +199,7 @@ function renderStrip(offers, visits) {
   });
   strip.hidden = offers.length === 0;
 }
+
 // Coupons joined by progress lines.
 function renderTracker() {
   const { offers, visits } = state;
@@ -500,17 +504,17 @@ document.addEventListener('keydown', (event) => {
 
 window.addEventListener('resize', () => { if (state) positionArrow(); });
 
-// Shows the Google review link if the server has GOOGLE_REVIEW_URL set
+// Loads the social links from the server (/api/config); falls back to the defaults above
 async function loadReviewLink() {
   try {
     const res = await fetch('/api/config');
     const data = await res.json();
 
     links = {
-      google: data.googleReviewUrl || '',
-      instagram: data.instagramUrl || '',
-      facebook: data.facebookUrl || '',
-      rating: data.googleRating || ''
+      google: data.googleReviewUrl || links.google,
+      instagram: data.instagramUrl || links.instagram,
+      facebook: data.facebookUrl || links.facebook,
+      rating: data.googleRating || links.rating
     };
 
     // Redraw the cards now that the links are known
@@ -520,6 +524,7 @@ async function loadReviewLink() {
       strip.scrollLeft = scroll;
     }
 
+    // Optional review card at the bottom of the page (only if it exists in index.html)
     const link = $('review-link');
     if (link && data.googleReviewUrl) {
       link.href = data.googleReviewUrl;
