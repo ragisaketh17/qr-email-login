@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#3b0021">
-  <title>Loop Back</title>
+  <title>Bombay Chaat Bhandar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -25,7 +25,7 @@
       <div class="banner">
         <span class="mascot mascot-left" aria-hidden="true">🍟</span>
         <div class="banner-title">
-          <h1 class="fest">LOOP BACK</h1>
+          <h1 class="fest">BOMBAY<br>CHAAT BHANDAR</h1>
           <p class="cta">Scan · Visit · Win</p>
         </div>
         <span class="mascot mascot-right" aria-hidden="true">🍔</span>
@@ -67,7 +67,7 @@
         </form>
       </section>
 
-      <!-- Rewards view -->
+      <!-- Rewards view (shown after sign-in) -->
       <section id="rewards-view" hidden>
         <div class="rewards-head">
           <h2>Visit Rewards</h2>
@@ -89,29 +89,33 @@
         </div>
 
         <p class="next" id="next" hidden></p>
-        <a class="review-link" id="review-link" href="#" target="_blank" rel="noopener" hidden>
-        <span class="review-stars" aria-hidden="true">⭐⭐⭐⭐⭐</span>
-        <span class="review-text">
-          <strong>Enjoying our mart?</strong>
-          <small>Review us on Google</small>
-        </span>
-        <span class="review-arrow" aria-hidden="true">›</span>
-      </a>
-      <div class="follow-section">
-  <p class="follow-text">Follow us for new offers</p>
-  <div class="follow-icons">
-    <a href="https://instagram.com/YOUR_PAGE" target="_blank" rel="noopener" class="follow-btn insta" aria-label="Follow us on Instagram">
-      <i class="fa-brands fa-instagram"></i>
-    </a>
-    <a href="https://facebook.com/YOUR_PAGE" target="_blank" rel="noopener" class="follow-btn fb" aria-label="Follow us on Facebook">
-      <i class="fa-brands fa-facebook-f"></i>
-    </a>
-  </div>
-</div>
-      </section>
 
-      <!-- Google review link (shown only when GOOGLE_REVIEW_URL is set) -->
+        <!-- Google review card (appears only when GOOGLE_REVIEW_URL is set on the server) -->
+        <a class="review-link" id="review-link" href="#" target="_blank" rel="noopener" hidden>
+          <span class="review-stars" aria-hidden="true">⭐⭐⭐⭐⭐</span>
+          <span class="review-text">
+            <strong>Enjoying our mart?</strong>
+            <small>Review us on Google</small>
+          </span>
+          <span class="review-arrow" aria-hidden="true">›</span>
+        </a>
+
+        <!-- Follow us -->
+        <div class="follow-section">
+          <p class="follow-text">Follow us for new offers</p>
+          <div class="follow-icons">
+            <a href="https://instagram.com/YOUR_PAGE" target="_blank" rel="noopener" class="follow-btn insta" aria-label="Follow us on Instagram">
+              <i class="fa-brands fa-instagram"></i>
+            </a>
+            <a href="https://facebook.com/YOUR_PAGE" target="_blank" rel="noopener" class="follow-btn fb" aria-label="Follow us on Facebook">
+              <i class="fa-brands fa-facebook-f"></i>
+            </a>
+          </div>
+        </div>
+      </section>
     </main>
+
+    <footer class="team-up">Team Up!</footer>
   </div>
 
   <!-- All rewards page (opens from "View all") -->
@@ -177,6 +181,20 @@
         err.hidden = false;
       }
     }
+  </script>
+
+  <!-- Fills in the "Review us on Google" card from the link set on the server -->
+  <script>
+    fetch("/api/config")
+      .then((response) => response.json())
+      .then((config) => {
+        const link = document.getElementById("review-link");
+        if (link && config.googleReviewUrl) {
+          link.href = config.googleReviewUrl;
+          link.hidden = false;
+        }
+      })
+      .catch(() => {});
   </script>
 
   <script src="script.js"></script>
