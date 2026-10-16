@@ -63,8 +63,9 @@ const SOCIAL = [
   { key: 'facebook',  cls: 'fb',     label: 'Like us on Facebook',    html: '<i class="fa-brands fa-facebook-f"></i>' }
 ];
 
-function buildIcon(offer, index) {
-  const social = SOCIAL[index];
+function buildIcon(offer, index, signedIn) {
+  // Only use the social icons after sign-in
+  const social = signedIn ? SOCIAL[index] : null;
   const url = social && links[social.key];
 
   if (social && url) {
@@ -74,7 +75,7 @@ function buildIcon(offer, index) {
     a.target = '_blank';
     a.rel = 'noopener';
     a.setAttribute('aria-label', social.label);
-    a.innerHTML = social.html; // fixed markup defined above, not user data
+    a.innerHTML = social.html;
 
     if (social.key === 'google' && links.rating) {
       const badge = document.createElement('span');
@@ -84,6 +85,14 @@ function buildIcon(offer, index) {
     }
     return a;
   }
+
+  // Sign-in page, or no link set: keep the original icon (ticket, coin, gift)
+  const span = document.createElement('span');
+  span.className = 'icon';
+  span.setAttribute('aria-hidden', 'true');
+  span.textContent = offer.icon;
+  return span;
+}
 
   // No link set (or more than 3 cards): keep the original emoji icon
   const span = document.createElement('span');
