@@ -11,27 +11,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="style.css">
 
-  <!-- Styles for the Instagram / Facebook cards (overrides style.css if needed) -->
-  <style>
-    /* Instagram / Facebook cards (same pink look as the reward cards) */
-    .social-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
-    .social-card {
-      display: flex; flex-direction: column; align-items: center; justify-content: space-between;
-      min-height: 170px; padding: 18px 12px 0;
-      background: #d4199a; color: #fff;           /* pink, like your reward cards */
-      border-radius: 20px; text-decoration: none; text-align: center;
-      font-weight: 800; line-height: 1.25; overflow: hidden;
-    }
-    .social-card[hidden] { display: none; }      /* hidden until the link is loaded */
-    .social-card small { font-weight: 500; font-size: 14px; }
-    .social-card .bump {                          /* dark maroon curve at the bottom */
-      width: 100%; height: 62px; margin-top: 10px;
-      border-radius: 70px 70px 0 0; background: #3b0021;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .social-card .bump i { font-size: 30px; }
-    .social-card:focus-visible { outline: 3px solid #fbbc05; outline-offset: 3px; }
-  </style>
 
   <!-- Google Sign-In library -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -112,17 +91,6 @@
 
         <p class="next" id="next" hidden></p>
 
-        <!-- Instagram and Facebook cards (links come from /api/config) -->
-        <div class="social-cards">
-          <a href="#" id="insta-link" class="social-card" target="_blank" rel="noopener" hidden>
-            <span>Follow us<br>on Instagram</span>
-            <span class="bump"><i class="fa-brands fa-instagram"></i></span>
-          </a>
-          <a href="#" id="fb-link" class="social-card" target="_blank" rel="noopener" hidden>
-            <span>Like us<br>on Facebook</span>
-            <span class="bump"><i class="fa-brands fa-facebook-f"></i></span>
-          </a>
-        </div>
       </section>
     </main>
 
@@ -194,25 +162,6 @@
     }
   </script>
 
-  <!-- Fills in the Instagram and Facebook links from the values set on the server -->
-  <script>
-    fetch("/api/config")
-      .then((response) => response.json())
-      .then((config) => {
-        const insta = document.getElementById("insta-link");
-        if (insta && config.instagramUrl) {
-          insta.href = config.instagramUrl;
-          insta.hidden = false;
-        }
-
-        const fb = document.getElementById("fb-link");
-        if (fb && config.facebookUrl) {
-          fb.href = config.facebookUrl;
-          fb.hidden = false;
-        }
-      })
-      .catch(() => {});
-  </script>
 
   <script src="script.js"></script>
 </body>
