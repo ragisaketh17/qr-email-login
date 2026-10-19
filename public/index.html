@@ -11,43 +11,26 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="style.css">
 
-  <!-- Styles for the Google review card and social buttons (overrides style.css if needed) -->
+  <!-- Styles for the Instagram / Facebook cards (overrides style.css if needed) -->
   <style>
-    .review-link {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-top: 16px;
-      padding: 12px 14px;
-      background: #fff;
-      color: #1f1f1f;
-      border-radius: 16px;
-      text-decoration: none;
+    /* Instagram / Facebook cards (same pink look as the reward cards) */
+    .social-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .social-card {
+      display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+      min-height: 170px; padding: 18px 12px 0;
+      background: #d4199a; color: #fff;           /* pink, like your reward cards */
+      border-radius: 20px; text-decoration: none; text-align: center;
+      font-weight: 800; line-height: 1.25; overflow: hidden;
     }
-    .review-link[hidden] { display: none; }
-    .g-logo { width: 34px; height: 34px; flex: none; }
-    .review-text { display: flex; flex-direction: column; flex: 1; line-height: 1.25; }
-    .review-text small { color: #5f6368; }
-    .review-rating { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-    .review-rating .num { font-weight: 700; color: #1f1f1f; }
-    .review-stars { color: #fbbc05; letter-spacing: 1px; font-size: 14px; }
-    .review-arrow { font-size: 22px; color: #5f6368; }
-
-    .follow-icons { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
-    .follow-btn {
-      display: flex; align-items: center; justify-content: center; gap: 10px;
-      padding: 12px 18px;
-      border-radius: 999px;
-      color: #fff; font-size: 15px; font-weight: 600;
-      text-decoration: none;
+    .social-card[hidden] { display: none; }      /* hidden until the link is loaded */
+    .social-card small { font-weight: 500; font-size: 14px; }
+    .social-card .bump {                          /* dark maroon curve at the bottom */
+      width: 100%; height: 62px; margin-top: 10px;
+      border-radius: 70px 70px 0 0; background: #3b0021;
+      display: flex; align-items: center; justify-content: center;
     }
-    .follow-btn i { font-size: 20px; }
-    .follow-btn[hidden] { display: none; }
-    .follow-btn.insta {
-      background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285aeb 90%);
-    }
-    .follow-btn.fb { background: #1877f2; }
-    .follow-btn:focus-visible, .review-link:focus-visible { outline: 3px solid #fbbc05; outline-offset: 3px; }
+    .social-card .bump i { font-size: 30px; }
+    .social-card:focus-visible { outline: 3px solid #fbbc05; outline-offset: 3px; }
   </style>
 
   <!-- Google Sign-In library -->
@@ -129,38 +112,16 @@
 
         <p class="next" id="next" hidden></p>
 
-        <!-- Google review card: G logo + star rating (appears only when GOOGLE_REVIEW_URL is set on the server) -->
-        <a class="review-link" id="review-link" href="#" target="_blank" rel="noopener" hidden>
-          <svg class="g-logo" viewBox="0 0 48 48" aria-hidden="true">
-            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-          </svg>
-          <span class="review-text">
-            <strong>Enjoying our mart?</strong>
-            <span class="review-rating">
-              <span class="num" id="review-rating-num" hidden></span>
-              <span class="review-stars" aria-hidden="true">★★★★★</span>
-            </span>
-            <small>Review us on Google</small>
-          </span>
-          <span class="review-arrow" aria-hidden="true">›</span>
-        </a>
-
-        <!-- Follow us (links are filled in from the server config) -->
-        <div class="follow-section">
-          <p class="follow-text">Follow us for new offers</p>
-          <div class="follow-icons">
-            <a href="#" id="insta-link" target="_blank" rel="noopener" class="follow-btn insta" hidden>
-              <i class="fa-brands fa-instagram"></i>
-              <span>Follow us on Instagram</span>
-            </a>
-            <a href="#" id="fb-link" target="_blank" rel="noopener" class="follow-btn fb" hidden>
-              <i class="fa-brands fa-facebook-f"></i>
-              <span>Like us on Facebook</span>
-            </a>
-          </div>
+        <!-- Instagram and Facebook cards (links come from /api/config) -->
+        <div class="social-cards">
+          <a href="#" id="insta-link" class="social-card" target="_blank" rel="noopener" hidden>
+            <span>Follow us<br>on Instagram</span>
+            <span class="bump"><i class="fa-brands fa-instagram"></i></span>
+          </a>
+          <a href="#" id="fb-link" class="social-card" target="_blank" rel="noopener" hidden>
+            <span>Like us<br>on Facebook</span>
+            <span class="bump"><i class="fa-brands fa-facebook-f"></i></span>
+          </a>
         </div>
       </section>
     </main>
@@ -233,22 +194,11 @@
     }
   </script>
 
-  <!-- Fills in the Google review card and social links from the values set on the server -->
+  <!-- Fills in the Instagram and Facebook links from the values set on the server -->
   <script>
     fetch("/api/config")
       .then((response) => response.json())
       .then((config) => {
-        const review = document.getElementById("review-link");
-        if (review && config.googleReviewUrl) {
-          review.href = config.googleReviewUrl;
-          review.hidden = false;
-          const num = document.getElementById("review-rating-num");
-          if (num && config.googleRating) {
-            num.textContent = config.googleRating;
-            num.hidden = false;
-          }
-        }
-
         const insta = document.getElementById("insta-link");
         if (insta && config.instagramUrl) {
           insta.href = config.instagramUrl;
