@@ -51,8 +51,8 @@ const STATUS_TEXT = { claimed: 'Claimed', available: 'Available', locked: 'Locke
 // A link that still contains YOUR_PAGE or YOUR_PLACE_ID is ignored, so nothing broken is shown.
 let links = {
   google: '',   // e.g. https://search.google.com/local/writereview?placeid=YOUR_PLACE_ID
-  instagram: 'https://www.instagram.com/YOUR_PAGE',
-  facebook: 'https://www.facebook.com/YOUR_PAGE',
+  instagram: 'https://www.instagram.com/bombay_chaat_bhandar',  // your Instagram page
+  facebook: 'https://www.facebook.com/share/1FKFLpPrDz/',       // your Facebook page
   rating: ''    // e.g. 4.8 (optional)
 };
 let stripData = null; // lets the strip be redrawn when the links arrive
