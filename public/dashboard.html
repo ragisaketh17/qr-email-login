@@ -52,6 +52,17 @@ dialog::backdrop{background:rgba(20,0,12,.55)}
 .db h3{margin:14px 0 6px;font-size:14px;color:var(--wine)}
 .vrow{display:flex;gap:12px;padding:8px 0;font-size:13px;border-bottom:1px solid var(--line)}
 .vnum{flex:none;display:grid;place-items:center;width:28px;height:28px;font-size:12px;font-weight:700;color:#fff;background:var(--pink);border-radius:50%}
+
+.arrow{display:inline-block;width:1.2em;color:var(--pink);transition:transform .2s}
+tr.open .arrow{transform:rotate(180deg)}
+tr.open{background:#fff5fb}
+.detail-row td{padding:0;background:#fffafd;white-space:normal}
+.panel{padding:16px 18px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:10px;margin-bottom:12px}
+.fact{padding:10px 12px;background:#fff;border:1px solid var(--line);border-radius:10px}
+.fact b{display:block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.fact span{font-size:14px;font-weight:600}
+.panel h3{margin:12px 0 6px;font-size:14px;color:var(--wine)}
 </style>
 </head>
 <body>
@@ -85,7 +96,7 @@ dialog::backdrop{background:rgba(20,0,12,.55)}
     <section class="box"><h2>Rewards Overview</h2><div class="scroll"><table>
       <thead><tr><th>Reward</th><th>Required Visits</th><th>Unlocked By</th><th>Claimed</th><th>Pending Claim</th></tr></thead>
       <tbody id="offers-body"></tbody></table></div></section>
-    <section class="box"><h2>Customers <span class="muted" style="font-size:12px;font-weight:400">(click a customer for full visit history)</span></h2>
+    <section class="box"><h2>Customers <span class="muted" style="font-size:12px;font-weight:400">(click a customer to see details)</span></h2>
       <input id="search" type="search" placeholder="Search by customer email...">
       <div class="scroll"><table>
         <thead><tr><th>Email</th><th>Visits</th><th>Rewards claimed</th><th>Last visit</th><th>Joined</th></tr></thead>
@@ -96,11 +107,6 @@ dialog::backdrop{background:rgba(20,0,12,.55)}
       <tbody id="claims-body"></tbody></table></div>
       <p id="claims-empty" class="muted" hidden>No rewards claimed yet.</p></section>
   </main>
-  <dialog id="detail">
-    <div class="dh"><h2 id="d-email"></h2><p id="d-sub"></p></div>
-    <div class="db" id="d-body"></div>
-    <button class="btn full" id="d-close" type="button" style="width:calc(100% - 36px);margin:0 18px 16px">Close</button>
-  </dialog>
 </div>
 
 <script>
@@ -143,12 +149,31 @@ function showOffers(offers) {
     [o.headline, `${o.minVisits} visit${o.minVisits === 1 ? "" : "s"}`, o.unlocked, o.claimed, o.unlocked - o.claimed]));
 }
 
+let openEmail = null;
+
+function closeAllDetails() {
+  document.querySelectorAll("#customers-body .detail-row").forEach((r) => r.remove());
+  document.querySelectorAll("#customers-body tr.open").forEach((r) => r.classList.remove("open"));
+}
+
 function showCustomers() {
   const q = $("search").value.trim().toLowerCase();
   const list = customers.filter((c) => c.email.includes(q));
-  fillRows($("customers-body"), list.map((c) => [c.email, c.visits, c.claimed, fmtTime(c.lastVisit), fmtDay(c.joined)]));
-  [...$("customers-body").children].forEach((tr, i) => tr.addEventListener("click", () => openCustomer(list[i].email)));
+  const tbody = $("customers-body");
+  tbody.replaceChildren();
+  let reopen = null;
+  for (const c of list) {
+    const tr = document.createElement("tr");
+    const first = document.createElement("td");
+    first.append(el("span", "▾", "arrow"), document.createTextNode(c.email));
+    tr.append(first);
+    for (const v of [c.visits, c.claimed, fmtTime(c.lastVisit), fmtDay(c.joined)]) tr.append(el("td", String(v)));
+    tr.addEventListener("click", () => toggleCustomer(tr, c.email));
+    tbody.append(tr);
+    if (c.email === openEmail) reopen = [tr, c.email];
+  }
   $("customers-empty").hidden = list.length > 0;
+  if (reopen) toggleCustomer(reopen[0], reopen[1]);
 }
 
 function showClaims(claims) {
@@ -156,18 +181,59 @@ function showClaims(claims) {
   $("claims-empty").hidden = claims.length > 0;
 }
 
-async function openCustomer(email) {
-  const res = await fetch("/admin/customer?email=" + encodeURIComponent(email));
-  if (res.status === 401) return showLogin();
-  if (!res.ok) return;
-  const c = await res.json();
+async function toggleCustomer(tr, email) {
+  const next = tr.nextElementSibling;
+  const wasOpen = next && next.classList.contains("detail-row");
+  closeAllDetails();
+  if (wasOpen) { openEmail = null; return; }
 
-  $("d-email").textContent = c.email;
-  $("d-sub").textContent = `Joined ${fmtFull(c.joined)} · ${c.totalVisits} visits`;
-  const body = $("d-body");
-  body.replaceChildren(el("h3", "Visit history (1st to last)"));
+  openEmail = email;
+  tr.classList.add("open");
+  const row = document.createElement("tr");
+  row.className = "detail-row";
+  const td = document.createElement("td");
+  td.colSpan = 5;
+  td.append(el("div", "Loading...", "panel muted"));
+  row.append(td);
+  tr.after(row);
 
-  if (!c.visits.length) body.append(el("p", `No individual visits recorded yet. Last visit: ${fmtFull(c.lastVisit)}`, "muted"));
+  try {
+    const res = await fetch("/admin/customer?email=" + encodeURIComponent(email));
+    if (res.status === 401) return showLogin();
+    if (!res.ok) throw new Error("fail");
+    renderPanel(td, await res.json());
+  } catch (e) {
+    td.replaceChildren(el("div", "Could not load this customer.", "panel muted"));
+  }
+}
+
+function renderPanel(td, c) {
+  const panel = document.createElement("div");
+  panel.className = "panel";
+
+  const hasLog = c.visits.length > 0;
+  const firstIso = hasLog ? c.visits[0] : c.joined;
+  const lastIso = hasLog ? c.visits[c.visits.length - 1] : c.lastVisit;
+
+  const facts = document.createElement("div");
+  facts.className = "facts";
+  for (const [label, value] of [
+    ["First visit", fmtFull(firstIso)],
+    ["Last visit", fmtFull(lastIso)],
+    ["Total visits", c.totalVisits],
+    ["Joined", fmtFull(c.joined)],
+  ]) {
+    const f = document.createElement("div");
+    f.className = "fact";
+    f.append(el("b", label), el("span", String(value)));
+    facts.append(f);
+  }
+  panel.append(facts);
+
+  panel.append(el("h3", "Visit history (1st to last)"));
+  if (!hasLog) {
+    panel.append(el("div", "Individual visits are recorded from the latest update onwards. Showing join date as first visit.", "muted"));
+  }
   c.visits.forEach((iso, i) => {
     const row = document.createElement("div");
     row.className = "vrow";
@@ -176,13 +242,14 @@ async function openCustomer(email) {
     const box = document.createElement("div");
     box.append(el("div", fmtFull(iso)), el("div", gap, "muted"));
     row.append(el("span", i + 1, "vnum"), box);
-    body.append(row);
+    panel.append(row);
   });
 
-  body.append(el("h3", "Rewards claimed"));
-  if (!c.claims.length) body.append(el("p", "None yet.", "muted"));
-  c.claims.forEach((x) => body.append(el("div", `${x.reward} · ${fmtFull(x.claimedAt)}`)));
-  $("detail").showModal();
+  panel.append(el("h3", "Rewards claimed"));
+  if (!c.claims.length) panel.append(el("div", "None yet.", "muted"));
+  c.claims.forEach((x) => panel.append(el("div", `${x.reward} · ${fmtFull(x.claimedAt)}`)));
+
+  td.replaceChildren(panel);
 }
 
 function showLogin() {
@@ -241,7 +308,6 @@ $("login-form").addEventListener("submit", async (e) => {
 $("logout").addEventListener("click", async () => { await fetch("/admin/logout", { method: "POST" }); showLogin(); });
 $("refresh").addEventListener("click", load);
 $("search").addEventListener("input", showCustomers);
-$("d-close").addEventListener("click", () => $("detail").close());
 load();
 </script>
 </body>
