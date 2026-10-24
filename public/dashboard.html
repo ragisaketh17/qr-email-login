@@ -200,10 +200,11 @@ async function toggleCustomer(tr, email) {
   try {
     const res = await fetch("/admin/customer?email=" + encodeURIComponent(email));
     if (res.status === 401) return showLogin();
-    if (!res.ok) throw new Error("fail");
+    if (!res.ok) throw new Error("Server replied " + res.status);
     renderPanel(td, await res.json());
   } catch (e) {
-    td.replaceChildren(el("div", "Could not load this customer.", "panel muted"));
+    console.error("Customer panel error:", e);
+    td.replaceChildren(el("div", "Could not load this customer (" + e.message + ").", "panel muted"));
   }
 }
 
