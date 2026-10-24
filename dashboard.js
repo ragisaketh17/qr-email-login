@@ -209,8 +209,9 @@ module.exports = function addDashboard(app, { getDb, getCookie, getOffers, defau
       if (!user) return res.status(404).json({ error: "Customer not found." });
 
       const OFFERS = await getOffers();
+      // db.visits only exists after you add it in server.js; until then show no per-visit history
       const [visits, claims] = await Promise.all([
-        db.visits.find({ userId: user._id }).sort({ at: 1 }).limit(2000).toArray(),
+        db.visits ? db.visits.find({ userId: user._id }).sort({ at: 1 }).limit(2000).toArray() : [],
         db.claims.find({ userId: user._id }).sort({ claimedAt: 1 }).toArray(),
       ]);
 
